@@ -98,7 +98,7 @@ services:
       dockerfile: Dockerfile
     container_name: minca_ui
     env_file:
-      - ../configs/env/service-specific/.env.ui
+      - configs/env/service-specific/.env.ui
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       NEXT_PUBLIC_DOCUMENT_PROCESSOR_URL: http://localhost:8001

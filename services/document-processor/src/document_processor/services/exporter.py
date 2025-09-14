@@ -21,7 +21,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent
 
 from sqlalchemy.orm import Session
 from app.db.session import engine
-from app.db.models import Run, Transform, Codify, Export, RunStatus, Component
+from app.db.models import Run, Row, Codify, RunStatus, Component
 from app.storage.s3 import upload_bytes
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -60,7 +60,6 @@ class DocumentExporter:
                     case_id=session.get(Run, run_id).case_id if session.get(Run, run_id) else "",
                     component=Component.EXPORT,
                     status=RunStatus.STARTED,
-                    parent_run_id=run_id,
                     started_at=datetime.utcnow()
                 )
                 session.add(export_run)
@@ -91,8 +90,8 @@ class DocumentExporter:
             # Update export run with completion
             with Session(engine) as session:
                 export_run = session.get(Run, export_run_id)
-                export_run.status = RunStatus.COMPLETED
-                export_run.completed_at = datetime.utcnow()
+                export_run.status = RunStatus.SUCCESS
+                export_run.finished_at = datetime.utcnow()
                 export_run.metrics = {
                     'rows_exported': len(data),
                     'template_used': template,
@@ -181,25 +180,24 @@ class DocumentExporter:
             processed_data = []
             
             with Session(engine) as session:
-                # Get transform run
-                transform_run_id = f"{run_id}_transform"
-                transforms = session.query(Transform).filter(Transform.run_id == transform_run_id).all()
+                # Get rows with transformed data
+                rows = session.query(Row).filter(Row.run_id == run_id).all()
                 
                 # Get codify run if exists
                 codify_run_id = f"{run_id}_codify"
-                codifies = {c.row_id: c for c in session.query(Codify).filter(Codify.run_id == codify_run_id).all()}
+                codifies = {c.row_idx: c for c in session.query(Codify).filter(Codify.run_id == codify_run_id).all()}
                 
-                for transform in transforms:
-                    # Merge transform and codify data
-                    row_data = transform.transformed_data.copy() if transform.transformed_data else {}
+                for row in rows:
+                    # Use transformed data if available, otherwise use extracted data
+                    row_data = row.transformed_data.copy() if row.transformed_data else (row.extracted_data.copy() if row.extracted_data else {})
                     
                     # Add codification results if available
-                    codify = codifies.get(transform.row_id)
-                    if codify and codify.result:
+                    codify = codifies.get(row.row_index)
+                    if codify:
                         row_data.update({
-                            'cvegs_code': codify.result.get('cvegs_code'),
-                            'confidence': codify.result.get('confidence'),
-                            'codify_status': codify.result.get('status', 'completed')
+                            'cvegs_code': codify.suggested_cvegs,
+                            'confidence': codify.confidence,
+                            'codify_status': codify.decision
                         })
                     else:
                         row_data.update({
@@ -212,7 +210,7 @@ class DocumentExporter:
                     row_data.update({
                         'process_status': 'completed',
                         'processed_at': datetime.utcnow(),
-                        'transform_errors': transform.validation_errors or []
+                        'transform_errors': row.errors.get('validation', []) if row.errors else []
                     })
                     
                     processed_data.append(row_data)
@@ -381,20 +379,11 @@ class DocumentExporter:
                                  template_config: Dict[str, Any], row_count: int):
         """Store export record in database"""
         try:
-            with Session(engine) as session:
-                export = Export(
-                    id=str(uuid.uuid4()),
-                    run_id=export_run_id,
-                    base_run_id=base_run_id,
-                    export_url=export_url,
-                    template_name=template_config.get('name', 'Unknown'),
-                    row_count=row_count,
-                    created_at=datetime.utcnow()
-                )
-                session.add(export)
-                session.commit()
-                
-                self.logger.info(f"Stored export record for run {export_run_id}")
+            # For now, just log the export information
+            # In the future, this could store to a dedicated Export table
+            self.logger.info(f"Export completed - Run: {export_run_id}, Base: {base_run_id}, "
+                           f"URL: {export_url}, Template: {template_config.get('name', 'Unknown')}, "
+                           f"Rows: {row_count}")
                 
         except Exception as e:
             self.logger.error(f"Error storing export record: {e}")
