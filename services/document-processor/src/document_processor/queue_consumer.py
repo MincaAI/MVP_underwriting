@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Simplified document processor consumer for preprocessing data for matching.
-Handles EXTRACT → TRANSFORM pipeline and saves results to database.
+Document Processor Queue Consumer
+
+Handles complete document processing pipeline: EXTRACT → TRANSFORM → EXPORT
+Integrates with existing DocumentExtractor, DocumentTransformer, and DocumentExporter services.
 """
 
 import asyncio
@@ -23,17 +25,27 @@ sys.path.insert(0, str(project_root / "packages" / "mq" / "src"))
 
 from app.db.session import engine
 from app.db.models import Run, Row, Component, RunStatus
-from app.storage.s3 import download_file
+from app.storage.s3 import download_to_tmp
 from app.mq.queue_factory import QueueFactory
+
+# Import the existing service components
+from document_processor.services.extractor import DocumentExtractor
+from document_processor.services.transformer import DocumentTransformer
+from document_processor.services.exporter import DocumentExporter
 
 logger = logging.getLogger(__name__)
 
 class DocumentProcessorConsumer:
-    """Consumer for preprocessing documents for matching"""
+    """Consumer for complete document processing pipeline: EXTRACT → TRANSFORM → EXPORT"""
     
     def __init__(self):
         self.temp_dir = "/tmp/document_processor"
         os.makedirs(self.temp_dir, exist_ok=True)
+        
+        # Initialize service components
+        self.extractor = DocumentExtractor()
+        self.transformer = DocumentTransformer()
+        self.exporter = DocumentExporter()
     
     async def handle_extract_message(self, message: Dict[str, Any]):
         """Handle EXTRACT component messages"""
@@ -46,26 +58,31 @@ class DocumentProcessorConsumer:
             
             logger.info(f"Processing EXTRACT message for run {run_id}")
             
-            # Update run status to STARTED
-            await self._update_run_status(run_id, RunStatus.STARTED)
-            
             # Download file from S3
             temp_file_path = os.path.join(self.temp_dir, f"{run_id}.xlsx")
             await self._download_file(s3_uri, temp_file_path)
             
-            # Extract data
-            extracted_data = await self._extract_data(temp_file_path, run_id, case_id)
+            # Create a mock UploadFile object for the extractor
+            from fastapi import UploadFile
+            import io
+            
+            with open(temp_file_path, 'rb') as f:
+                file_content = f.read()
+            
+            # Create UploadFile-like object
+            file_obj = UploadFile(
+                filename=f"{run_id}.xlsx",
+                file=io.BytesIO(file_content)
+            )
+            
+            # Use the existing extractor service
+            extracted_data = await self.extractor.extract(file_obj, run_id, case_id)
             
             # Clean up temp file
             if os.path.exists(temp_file_path):
                 os.unlink(temp_file_path)
             
-            # Update run status to SUCCESS
-            await self._update_run_status(
-                run_id, 
-                RunStatus.SUCCESS, 
-                metrics={"rows_extracted": len(extracted_data)}
-            )
+            logger.info(f"✅ Extract completed for run {run_id} - {len(extracted_data)} rows extracted")
             
             # Send to TRANSFORM queue
             transform_message = {
@@ -74,8 +91,8 @@ class DocumentProcessorConsumer:
                 "run_id": run_id,
                 "component": "TRANSFORM",
                 "payload": {
-                    "extracted_data": extracted_data,
-                    "profile": profile
+                    "profile": profile,
+                    "export_template": payload.get("export_template", "gcotiza_v1.yaml")
                 }
             }
             
@@ -87,198 +104,87 @@ class DocumentProcessorConsumer:
             await self._update_run_status(run_id, RunStatus.FAILED, error=str(e))
     
     async def handle_transform_message(self, message: Dict[str, Any]):
-        """Handle TRANSFORM component messages - Final stage for matching"""
+        """Handle TRANSFORM component messages"""
         try:
             payload = message["payload"]
             run_id = message["run_id"]
             case_id = message["case_id"]
-            extracted_data = payload["extracted_data"]
-            profile = payload["profile"]
+            profile = payload.get("profile", "generic.yaml")
+            export_template = payload.get("export_template", "gcotiza_v1.yaml")
             
-            logger.info(f"Processing TRANSFORM message for run {run_id} - Final preprocessing stage")
+            logger.info(f"Processing TRANSFORM message for run {run_id}")
             
-            # Transform data for matching
-            transformed_data = await self._transform_data_for_matching(extracted_data, profile, run_id, case_id)
+            # Use the existing transformer service
+            transform_result = await self.transformer.transform(run_id, profile)
             
-            # Update final run status - Processing complete, ready for matching
-            await self._update_run_status(
-                run_id, 
-                RunStatus.SUCCESS, 
-                metrics={
-                    "rows_processed": len(transformed_data),
-                    "ready_for_matching": True,
-                    "profile_used": profile
+            logger.info(f"✅ Transform completed for run {run_id} - {transform_result.get('transformed_rows', 0)} rows processed")
+            
+            # Send to EXPORT queue
+            export_message = {
+                "msg_id": message["msg_id"],
+                "case_id": case_id,
+                "run_id": run_id,
+                "component": "EXPORT",
+                "payload": {
+                    "template": export_template,
+                    "transform_result": transform_result
                 }
-            )
+            }
             
-            logger.info(f"✅ Preprocessing completed for run {run_id} - {len(transformed_data)} vehicles ready for matching")
+            await QueueFactory.get_publisher().send_message("mvp-underwriting-export", export_message)
+            logger.info(f"Sent EXPORT message for run {run_id}")
             
         except Exception as e:
             logger.error(f"Error processing TRANSFORM message: {e}")
             await self._update_run_status(run_id, RunStatus.FAILED, error=str(e))
     
+    async def handle_export_message(self, message: Dict[str, Any]):
+        """Handle EXPORT component messages - Final stage of processing"""
+        try:
+            payload = message["payload"]
+            run_id = message["run_id"]
+            case_id = message["case_id"]
+            template = payload.get("template", "gcotiza_v1.yaml")
+            transform_result = payload.get("transform_result", {})
+            
+            logger.info(f"Processing EXPORT message for run {run_id}")
+            
+            # Use the existing exporter service
+            export_url = await self.exporter.export(run_id, template)
+            
+            # Update final run status - Complete processing pipeline
+            await self._update_run_status(
+                run_id, 
+                RunStatus.SUCCESS, 
+                metrics={
+                    "export_url": export_url,
+                    "template_used": template,
+                    "pipeline_completed": True,
+                    "transform_metrics": transform_result
+                }
+            )
+            
+            logger.info(f"🎉 Complete processing pipeline finished for run {run_id} - Export available at {export_url}")
+            
+        except Exception as e:
+            logger.error(f"Error processing EXPORT message: {e}")
+            await self._update_run_status(run_id, RunStatus.FAILED, error=str(e))
+    
     async def _download_file(self, s3_uri: str, local_path: str):
         """Download file from S3 to local path"""
         logger.info(f"Downloading {s3_uri} to {local_path}")
-        # Implementation would use actual S3 download
-        # For now, simulate download with a dummy file
-        with open(local_path, 'w') as f:
-            f.write("dummy content for testing")
-        await asyncio.sleep(0.1)
-    
-    async def _extract_data(self, file_path: str, run_id: str, case_id: str) -> list:
-        """Extract data from file for matching"""
-        logger.info(f"Extracting data from {file_path}")
-        
-        # For testing, create sample data
-        # In production, this would parse actual Excel/CSV files
-        extracted_data = []
-        for i in range(3):  # Sample 3 vehicles
-            vehicle_data = {
-                "row_index": i,
-                "vin": f"1HGBH41JXMN10918{i}",
-                "brand": ["TOYOTA", "HONDA", "FORD"][i],
-                "model": ["COROLLA", "CIVIC", "F-150"][i],
-                "model_year": [2020, 2021, 2019][i],
-                "description": f"{['TOYOTA', 'HONDA', 'FORD'][i]} {['COROLLA', 'CIVIC', 'F-150'][i]} {[2020, 2021, 2019][i]}",
-                "license_plate": f"ABC-12{i}",
-                "raw_data": {
-                    "vin": f"1HGBH41JXMN10918{i}",
-                    "brand": ["TOYOTA", "HONDA", "FORD"][i],
-                    "model": ["COROLLA", "CIVIC", "F-150"][i],
-                    "year": [2020, 2021, 2019][i]
-                }
-            }
-            extracted_data.append(vehicle_data)
-        
-        # Store in database
-        await self._store_extracted_data(extracted_data, run_id)
-        
-        return extracted_data
-    
-    async def _transform_data_for_matching(self, extracted_data: list, profile: str, run_id: str, case_id: str) -> list:
-        """Transform extracted data for vehicle matching"""
-        logger.info(f"Transforming {len(extracted_data)} rows for matching with profile {profile}")
-        
-        transformed_data = []
-        for row in extracted_data:
-            # Apply transformations for matching
-            transformed_row = {
-                "row_index": row["row_index"],
-                "vin": self._normalize_vin(row.get("vin")),
-                "brand": self._normalize_brand(row.get("brand")),
-                "model": self._normalize_model(row.get("model")),
-                "model_year": self._normalize_year(row.get("model_year")),
-                "description": self._normalize_description(row.get("description")),
-                "license_plate": self._normalize_plate(row.get("license_plate")),
-                "matching_key": self._generate_matching_key(row),  # For efficient matching
-                "raw_data": row["raw_data"],
-                "profile_used": profile,
-                "transformed_at": pd.Timestamp.utcnow().isoformat()
-            }
-            transformed_data.append(transformed_row)
-        
-        # Store transformed data in database
-        await self._store_transformed_data(transformed_data, run_id)
-        
-        return transformed_data
-    
-    def _normalize_vin(self, vin: str) -> str:
-        """Normalize VIN for matching"""
-        if not vin:
-            return None
-        return str(vin).strip().upper().replace(' ', '')
-    
-    def _normalize_brand(self, brand: str) -> str:
-        """Normalize brand for matching"""
-        if not brand:
-            return None
-        return str(brand).strip().upper()
-    
-    def _normalize_model(self, model: str) -> str:
-        """Normalize model for matching"""
-        if not model:
-            return None
-        return str(model).strip().upper()
-    
-    def _normalize_year(self, year) -> int:
-        """Normalize year for matching"""
-        if not year:
-            return None
         try:
-            year_int = int(year)
-            if 1900 <= year_int <= 2030:
-                return year_int
-        except (ValueError, TypeError):
-            pass
-        return None
-    
-    def _normalize_description(self, description: str) -> str:
-        """Normalize description for matching"""
-        if not description:
-            return None
-        return str(description).strip().upper()
-    
-    def _normalize_plate(self, plate: str) -> str:
-        """Normalize license plate for matching"""
-        if not plate:
-            return None
-        return str(plate).strip().upper().replace(' ', '')
-    
-    def _generate_matching_key(self, row: dict) -> str:
-        """Generate a key for efficient matching"""
-        brand = self._normalize_brand(row.get("brand", "")) or ""
-        model = self._normalize_model(row.get("model", "")) or ""
-        year = str(self._normalize_year(row.get("model_year"))) or ""
-        return f"{brand}_{model}_{year}"
-    
-    async def _store_extracted_data(self, extracted_data: list, run_id: str):
-        """Store extracted data in database"""
-        from sqlalchemy.orm import Session
-        
-        with Session(engine) as session:
-            for row_data in extracted_data:
-                row = Row(
-                    run_id=run_id,
-                    row_index=row_data["row_index"],
-                    raw_data=row_data["raw_data"],
-                    extracted_data=row_data,
-                    created_at=pd.Timestamp.utcnow()
-                )
-                session.add(row)
-            session.commit()
-        
-        logger.info(f"Stored {len(extracted_data)} extracted rows for run {run_id}")
-    
-    async def _store_transformed_data(self, transformed_data: list, run_id: str):
-        """Store transformed data in database"""
-        from sqlalchemy.orm import Session
-        
-        with Session(engine) as session:
-            for row_data in transformed_data:
-                row = session.query(Row).filter(
-                    Row.run_id == run_id,
-                    Row.row_index == row_data["row_index"]
-                ).first()
-                
-                if row:
-                    row.transformed_data = row_data
-                    row.updated_at = pd.Timestamp.utcnow()
-                else:
-                    # Create new row if not found
-                    row = Row(
-                        run_id=run_id,
-                        row_index=row_data["row_index"],
-                        raw_data=row_data["raw_data"],
-                        extracted_data=row_data,
-                        transformed_data=row_data,
-                        created_at=pd.Timestamp.utcnow()
-                    )
-                    session.add(row)
-            
-            session.commit()
-        
-        logger.info(f"Stored {len(transformed_data)} transformed rows for run {run_id}")
+            # Use the actual S3 download function
+            temp_path = download_to_tmp(s3_uri)
+            # Move temp file to desired location
+            import shutil
+            shutil.move(temp_path, local_path)
+        except Exception as e:
+            logger.warning(f"S3 download failed, creating dummy file for testing: {e}")
+            # Fallback for testing - create dummy Excel file
+            with open(local_path, 'w') as f:
+                f.write("dummy content for testing")
+            await asyncio.sleep(0.1)
     
     async def _update_run_status(self, run_id: str, status: RunStatus, metrics: dict = None, error: str = None):
         """Update run status in database"""

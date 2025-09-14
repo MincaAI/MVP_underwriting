@@ -21,6 +21,8 @@ pyyaml = "^6.0"
 db = {path = "../../packages/db", develop = true}
 schemas = {path = "../../packages/schemas", develop = true}
 storage = {path = "../../packages/storage", develop = true}
+common = {path = "../../packages/common", develop = true}
+mincaai-mq = {path = "../../packages/mq", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.0"
