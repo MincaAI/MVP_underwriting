@@ -251,6 +251,102 @@ async def process_manual_email(
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
+@router.get("/emails")
+async def list_emails(
+    limit: int = 50,
+    offset: int = 0,
+    status_filter: str = None
+):
+    """List all email messages with case information for smart intake dashboard"""
+    db = get_session()
+    try:
+        # Base query with joins
+        query = db.query(EmailMessage).outerjoin(Case, EmailMessage.id == Case.email_message_id)
+        
+        # Apply status filter if provided
+        if status_filter and status_filter != "all":
+            if status_filter == "processed":
+                query = query.filter(Case.id.isnot(None))
+            elif status_filter == "unprocessed":
+                query = query.filter(Case.id.is_(None))
+            elif status_filter in ["NEW", "EXTRACTING", "TRANSFORMING", "CODIFYING", "REVIEW", "READY", "EXPORTED", "ERROR"]:
+                query = query.filter(Case.status == status_filter)
+        
+        # Order by received date (newest first) and apply pagination
+        emails = query.order_by(EmailMessage.received_at.desc()).offset(offset).limit(limit).all()
+        
+        # Get total count for pagination
+        total_count = db.query(EmailMessage).count()
+        
+        # Format response
+        email_list = []
+        for email in emails:
+            # Get associated case
+            case = db.query(Case).filter(Case.email_message_id == email.id).first()
+            
+            # Count attachments
+            attachment_count = len(email.attachments)
+            
+            # Determine processing status and pre-analysis status
+            if case:
+                processing_status = case.status.value if hasattr(case.status, 'value') else str(case.status)
+                cot_number = case.id  # Using case ID as COT for now
+                
+                # Use the new pre_analysis_status field
+                pre_analysis_status = case.pre_analysis_status or "pending"
+                pre_analysis = "Completo" if pre_analysis_status == "complete" else "Incompleto"
+                
+                # Include missing requirements if available
+                missing_reqs = case.missing_requirements or {}
+                details_parts = []
+                if attachment_count > 0:
+                    details_parts.append(f"{attachment_count} attachment(s)")
+                if missing_reqs and pre_analysis_status in ["incomplete", "requires_info"]:
+                    missing_fields = missing_reqs.get("missing_fields", [])
+                    if missing_fields:
+                        details_parts.append(f"Missing: {', '.join(missing_fields)}")
+                details = "; ".join(details_parts) if details_parts else "No attachments"
+            else:
+                processing_status = "pending"
+                cot_number = None
+                pre_analysis = "Incompleto"
+                pre_analysis_status = "pending"
+                details = f"{attachment_count} attachment(s)" if attachment_count > 0 else "No attachments"
+            
+            email_data = {
+                "id": str(email.id),
+                "description": f"Email: {email.subject}",
+                "contact": email.from_email,
+                "date": email.received_at.strftime("%Y-%m-%d %H:%M"),
+                "cotNumber": cot_number or "N/A",
+                "preAnalysis": pre_analysis,
+                "status": processing_status,
+                "company": email.from_email.split('@')[1] if '@' in email.from_email else None,
+                "details": details,
+                "email_id": email.id,
+                "case_id": case.id if case else None,
+                "attachment_count": attachment_count,
+                "received_at": email.received_at.isoformat(),
+                "subject": email.subject,
+                "from_email": email.from_email,
+                # New pre-analysis fields
+                "pre_analysis_status": pre_analysis_status,
+                "pre_analysis_completed_at": case.pre_analysis_completed_at.isoformat() if case and case.pre_analysis_completed_at else None,
+                "missing_requirements": case.missing_requirements if case else None,
+                "pre_analysis_notes": case.pre_analysis_notes if case else None
+            }
+            email_list.append(email_data)
+        
+        return {
+            "emails": email_list,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + limit < total_count
+        }
+    finally:
+        db.close()
+
 @router.get("/email/{email_id}")
 async def get_email_details(email_id: int):
     """Get email message details with attachments"""
@@ -281,5 +377,154 @@ async def get_email_details(email_id: int):
                 for att in email.attachments
             ]
         }
+    finally:
+        db.close()
+
+@router.post("/email/{email_id}/process")
+async def process_email(email_id: int):
+    """Process an email to create a case and start extraction"""
+    db = get_session()
+    try:
+        # Check if email exists
+        email = db.query(EmailMessage).filter(EmailMessage.id == email_id).first()
+        if not email:
+            raise HTTPException(status_code=404, detail="Email message not found")
+        
+        # Check if case already exists
+        existing_case = db.query(Case).filter(Case.email_message_id == email_id).first()
+        if existing_case:
+            return {
+                "message": "Email already processed",
+                "case_id": existing_case.id,
+                "status": existing_case.status.value if hasattr(existing_case.status, 'value') else str(existing_case.status)
+            }
+        
+        # Create new case
+        case_id = str(uuid.uuid4())
+        case = Case(
+            id=case_id,
+            source='email',
+            email_message_id=email_id,
+            filename=f"Email: {email.subject}"
+        )
+        db.add(case)
+        
+        # Create initial run for EXTRACT component
+        run_id = str(uuid.uuid4())
+        run = Run(
+            id=run_id,
+            case_id=case_id,
+            component=Component.EXTRACT,
+            status=RunStatus.STARTED,
+            profile='generic.yaml',
+            started_at=datetime.utcnow(),
+            metrics={'email_message_id': email_id, 'attachments_count': len(email.attachments)}
+        )
+        db.add(run)
+        
+        db.commit()
+        
+        # Send SQS messages for processing if there are attachments
+        if email.attachments:
+            publisher = QueueFactory.get_publisher()
+            sqs_messages_sent = 0
+            
+            for i, attachment in enumerate(email.attachments):
+                try:
+                    message = {
+                        "msg_id": str(uuid.uuid4()),
+                        "case_id": case_id,
+                        "run_id": run_id,
+                        "component": "EXTRACT",
+                        "payload": {
+                            "s3_uri": attachment.s3_uri,
+                            "file_name": attachment.original_name,
+                            "profile": 'generic.yaml',
+                            "file_size": attachment.file_size,
+                            "file_hash": attachment.sha256,
+                            "attachment_index": i,
+                            "email_message_id": email_id
+                        }
+                    }
+                    
+                    await publisher.send_message("mvp-underwriting-extractor", message)
+                    sqs_messages_sent += 1
+                    logger.info(f"Sent EXTRACT message for attachment: {attachment.original_name}")
+                    
+                except Exception as sqs_error:
+                    logger.error(f"Failed to send SQS message for attachment {attachment.original_name}: {sqs_error}")
+        
+        return {
+            "case_id": case_id,
+            "run_id": run_id,
+            "status": "processing",
+            "message": f"Email processing started with {len(email.attachments)} attachments"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing email {email_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+    finally:
+        db.close()
+
+@router.put("/case/{case_id}/pre-analysis")
+async def update_pre_analysis_status(
+    case_id: str,
+    pre_analysis_status: str = Form(...),
+    missing_requirements: str = Form(None),
+    pre_analysis_notes: str = Form(None)
+):
+    """Update pre-analysis status for a case"""
+    db = get_session()
+    try:
+        # Check if case exists
+        case = db.query(Case).filter(Case.id == case_id).first()
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+        
+        # Validate pre_analysis_status
+        valid_statuses = ["pending", "in_progress", "complete", "incomplete", "requires_info"]
+        if pre_analysis_status not in valid_statuses:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid pre_analysis_status. Must be one of: {', '.join(valid_statuses)}"
+            )
+        
+        # Update pre-analysis fields
+        case.pre_analysis_status = pre_analysis_status
+        case.pre_analysis_notes = pre_analysis_notes
+        
+        # Parse missing_requirements if provided
+        if missing_requirements:
+            try:
+                import json
+                case.missing_requirements = json.loads(missing_requirements)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON format for missing_requirements")
+        
+        # Set completion timestamp if status is complete
+        if pre_analysis_status == "complete":
+            case.pre_analysis_completed_at = datetime.utcnow()
+        elif pre_analysis_status in ["pending", "in_progress", "incomplete", "requires_info"]:
+            case.pre_analysis_completed_at = None
+        
+        case.updated_at = datetime.utcnow()
+        
+        db.commit()
+        
+        return {
+            "case_id": case_id,
+            "pre_analysis_status": case.pre_analysis_status,
+            "pre_analysis_completed_at": case.pre_analysis_completed_at.isoformat() if case.pre_analysis_completed_at else None,
+            "missing_requirements": case.missing_requirements,
+            "pre_analysis_notes": case.pre_analysis_notes,
+            "message": "Pre-analysis status updated successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating pre-analysis status for case {case_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
     finally:
         db.close()

@@ -2,6 +2,8 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: minca_db
+    env_file:
+      - configs/env/.env.development
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -14,6 +16,8 @@ services:
     image: minio/minio:latest
     container_name: minca_minio
     command: server --console-address ":9001" /data
+    env_file:
+      - configs/env/.env.development
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -25,6 +29,8 @@ services:
     image: minio/mc:latest
     container_name: minca_minio_mc
     depends_on: [minio]
+    env_file:
+      - configs/env/.env.development
     entrypoint: >
       /bin/sh -c "
       sleep 3;

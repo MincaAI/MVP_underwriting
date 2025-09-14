@@ -10,7 +10,30 @@ from .routes_upload import router as upload_router
 from .routes_processing import router as processing_router
 
 # Load environment variables
-load_dotenv()
+import pathlib
+
+# Get the project root directory (4 levels up from this file)
+project_root = pathlib.Path(__file__).parent.parent.parent.parent.parent
+env_dir = project_root / "configs" / "env"
+
+# Load base development environment
+dev_env_path = env_dir / ".env.development"
+api_env_path = env_dir / "service-specific" / ".env.api"
+
+print(f"Loading environment from: {dev_env_path}")
+print(f"Loading API config from: {api_env_path}")
+
+if dev_env_path.exists():
+    load_dotenv(dev_env_path)
+    print("✅ Loaded .env.development")
+else:
+    print(f"❌ Could not find .env.development at {dev_env_path}")
+
+if api_env_path.exists():
+    load_dotenv(api_env_path)
+    print("✅ Loaded .env.api")
+else:
+    print(f"❌ Could not find .env.api at {api_env_path}")
 
 # Detect if we're running in Docker or locally
 def is_docker_environment():

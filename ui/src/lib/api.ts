@@ -184,6 +184,52 @@ class APIClient {
     return this.request(`/email/${emailId}`)
   }
 
+  // Smart intake email endpoints
+  async listEmails(limit: number = 50, offset: number = 0, statusFilter?: string) {
+    const params = new URLSearchParams()
+    params.append('limit', limit.toString())
+    params.append('offset', offset.toString())
+    if (statusFilter) {
+      params.append('status_filter', statusFilter)
+    }
+    
+    return this.request(`/emails?${params}`)
+  }
+
+  async processEmail(emailId: number) {
+    return this.request(`/email/${emailId}/process`, {
+      method: 'POST',
+    })
+  }
+
+  async updatePreAnalysisStatus(caseId: string, data: {
+    pre_analysis_status: string
+    missing_requirements?: object
+    pre_analysis_notes?: string
+  }) {
+    const formData = new FormData()
+    formData.append('pre_analysis_status', data.pre_analysis_status)
+    
+    if (data.missing_requirements) {
+      formData.append('missing_requirements', JSON.stringify(data.missing_requirements))
+    }
+    
+    if (data.pre_analysis_notes) {
+      formData.append('pre_analysis_notes', data.pre_analysis_notes)
+    }
+    
+    const response = await fetch(`${this.baseURL}/case/${caseId}/pre-analysis`, {
+      method: 'PUT',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
   // Processing status and data endpoints
   async getProcessingStatus(runId: string) {
     return this.request(`/processing/status/${runId}`)

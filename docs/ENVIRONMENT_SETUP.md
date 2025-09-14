@@ -189,6 +189,7 @@ The `.gitignore` file is configured to:
 
 ### Environment Variables Not Loading
 
+#### For Docker Services
 1. **Check file paths in docker-compose.yml:**
    ```bash
    # Verify files exist
@@ -205,6 +206,47 @@ The `.gitignore` file is configured to:
    ```bash
    docker compose exec api env | grep -E "(DATABASE|S3|OPENAI)"
    ```
+
+#### For Services Running Outside Docker
+If you're running services directly (e.g., `poetry run uvicorn src.api.main:app`), environment loading uses dynamic path resolution:
+
+1. **Check startup logs for environment loading:**
+   ```bash
+   # You should see output like:
+   Loading environment from: /path/to/MVP_underwriting/configs/env/.env.development
+   ✅ Loaded .env.development
+   Loading API config from: /path/to/MVP_underwriting/configs/env/service-specific/.env.api
+   ✅ Loaded .env.api
+   ```
+
+2. **If you see path errors:**
+   ```bash
+   # Check if files exist at the reported paths
+   ls -la /path/shown/in/error/.env.development
+   
+   # Verify you're running from the correct directory
+   pwd  # Should be in services/{service-name}
+   ```
+
+3. **Debug environment loading:**
+   ```python
+   # Add to your service's main.py for debugging
+   import pathlib
+   project_root = pathlib.Path(__file__).parent.parent.parent.parent.parent
+   print(f"Project root: {project_root}")
+   print(f"Environment dir: {project_root / 'configs' / 'env'}")
+   ```
+
+4. **Common path resolution issues:**
+   - **Wrong working directory**: Ensure you're running from `services/{service-name}/`
+   - **Symlinks**: Path resolution may fail with complex symlink setups
+   - **File permissions**: Ensure environment files are readable
+
+#### Environment Loading Best Practices
+- Services automatically detect and load both base and service-specific environment files
+- Path resolution is dynamic and works from any service directory
+- Startup logs show exactly which files are being loaded
+- Missing files are reported with full paths for easy debugging
 
 ### Service-Specific Issues
 

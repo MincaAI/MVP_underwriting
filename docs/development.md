@@ -89,17 +89,30 @@ poetry add sentence-transformers
 
 ### 2. Service Development
 
-Services depend on packages via workspace:
+Services depend on packages via workspace and automatically load environment configuration:
 
 ```bash
 # Start API service
 cd services/api
 poetry install
-poetry run uvicorn app.main:app --reload
+poetry run uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# The service will automatically load:
+# - configs/env/.env.development (base environment)
+# - configs/env/service-specific/.env.api (service-specific config)
 
 # Check service dependencies
 poetry show --tree
+
+# Verify environment loading
+curl http://localhost:8000/health
 ```
+
+**Environment Loading Notes:**
+- Services use dynamic path resolution to find environment files
+- Startup logs show which environment files are loaded
+- No manual environment setup needed - everything is automatic
+- Works from any service directory within the project
 
 ### 3. Database Changes
 
@@ -343,6 +356,30 @@ curl http://localhost:8000/health
 4. **"S3 connection failed"**
    - Check MinIO is running: `docker ps`
    - Verify environment variables
+
+5. **Environment variables not loading when running services directly**
+   ```bash
+   # Check startup logs for environment loading messages:
+   # ✅ Loaded .env.development
+   # ✅ Loaded .env.api
+   
+   # If you see path errors, verify you're in the correct directory:
+   pwd  # Should be in services/{service-name}
+   
+   # Check if environment files exist:
+   ls -la ../../configs/env/.env.development
+   ls -la ../../configs/env/service-specific/.env.api
+   ```
+
+6. **Service fails to start with path resolution errors**
+   ```bash
+   # Ensure you're running from the service directory:
+   cd services/api  # or other service
+   poetry run uvicorn src.api.main:app --reload
+   
+   # The service uses dynamic path resolution to find project root
+   # and automatically loads the correct environment files
+   ```
 
 ### Getting Help
 

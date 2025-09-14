@@ -8,10 +8,13 @@ interface SmartIntakeResult {
   contact: string
   date: string
   cotNumber: string
-  preAnalysis: 'Completo' | 'Incompleto'
+  preAnalysis: 'pending' | 'in_progress' | 'complete' | 'incomplete' | 'requires_info'
   status: 'pending' | 'processing' | 'completed' | 'error'
   company?: string
   details?: string
+  pre_analysis_status?: string
+  missing_requirements?: { missing_fields?: string[]; [key: string]: unknown }
+  pre_analysis_notes?: string
 }
 
 interface SmartIntakeResultsProps {
@@ -59,50 +62,83 @@ export default function SmartIntakeResults({ results, onProcess, onAskInfo }: Sm
     }
   }
 
-  const getPreAnalysisBadge = (preAnalysis: string) => {
-    if (preAnalysis === 'Completo') {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          ✓ Completo
-        </span>
-      )
-    } else {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-          ⚠ Incompleto
-        </span>
-      )
+  const getPreAnalysisBadge = (preAnalysis: 'pending' | 'in_progress' | 'complete' | 'incomplete' | 'requires_info') => {
+    switch (preAnalysis) {
+      case 'complete':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            ✓ Complete
+          </span>
+        )
+      case 'in_progress':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+            🔄 In Progress
+          </span>
+        )
+      case 'incomplete':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+            ⚠ Incomplete
+          </span>
+        )
+      case 'requires_info':
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            ❗ Requires Info
+          </span>
+        )
+      case 'pending':
+      default:
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            ⏳ Pending
+          </span>
+        )
     }
   }
 
   const getActionButton = (result: SmartIntakeResult) => {
-    if (result.status === 'completed') {
-      return (
-        <button
-          onClick={() => onProcess(result.id)}
-          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Process
-        </button>
-      )
-    } else if (result.preAnalysis === 'Incompleto') {
-      return (
-        <button
-          onClick={() => onAskInfo(result.id)}
-          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Ask info
-        </button>
-      )
-    } else {
-      return (
-        <button
-          onClick={() => onProcess(result.id)}
-          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-        >
-          Process
-        </button>
-      )
+    // Handle based on pre-analysis status
+    switch (result.preAnalysis) {
+      case 'complete':
+        return (
+          <button
+            onClick={() => onProcess(result.id)}
+            className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            Process
+          </button>
+        )
+      case 'requires_info':
+      case 'incomplete':
+        return (
+          <button
+            onClick={() => onAskInfo(result.id)}
+            className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+          >
+            Ask Info
+          </button>
+        )
+      case 'in_progress':
+        return (
+          <button
+            disabled
+            className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-gray-400 bg-gray-200 cursor-not-allowed"
+          >
+            In Progress
+          </button>
+        )
+      case 'pending':
+      default:
+        return (
+          <button
+            onClick={() => onProcess(result.id)}
+            className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Start Analysis
+          </button>
+        )
     }
   }
 
@@ -126,11 +162,12 @@ export default function SmartIntakeResults({ results, onProcess, onAskInfo }: Sm
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="Tous">Tous</option>
-                <option value="completed">Completed</option>
+                <option value="Tous">All</option>
+                <option value="complete">Complete</option>
+                <option value="in_progress">In Progress</option>
+                <option value="incomplete">Incomplete</option>
+                <option value="requires_info">Requires Info</option>
                 <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="error">Error</option>
               </select>
             </div>
             <div className="flex items-center space-x-2">
@@ -191,9 +228,19 @@ export default function SmartIntakeResults({ results, onProcess, onAskInfo }: Sm
                 </td>
                 <td className="px-3 py-4">
                   {getPreAnalysisBadge(result.preAnalysis)}
-                  {result.preAnalysis === 'Incompleto' && result.details && (
+                  {(result.preAnalysis === 'incomplete' || result.preAnalysis === 'requires_info') && result.details && (
                     <div className="text-xs text-orange-600 mt-1">
                       ⚠ {result.details}
+                    </div>
+                  )}
+                  {result.missing_requirements?.missing_fields && result.missing_requirements.missing_fields.length > 0 && (
+                    <div className="text-xs text-red-600 mt-1">
+                      Missing: {result.missing_requirements.missing_fields.join(', ')}
+                    </div>
+                  )}
+                  {result.pre_analysis_notes && (
+                    <div className="text-xs text-gray-600 mt-1">
+                      📝 {result.pre_analysis_notes}
                     </div>
                   )}
                 </td>
