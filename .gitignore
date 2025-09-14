@@ -1,0 +1,51 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node/Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# VSCode / Editors
+.vscode/
+*.swp
+
+# Docker
+**/.dockerignore
+
+# UI local env (ui/.env.local is already gitignored inside ui, but keep global rule as safety)
+ui/.env.local
+
+# Data and temp files
+data/*.tmp
+tmp/
+.cache/
+
+# Environment files in configs (do not commit real env files)
+configs/env/*.env
+configs/env/.env.*
+configs/env/service-specific/.env.*
+!configs/env/.env.example

@@ -1,0 +1,85 @@
+# Model aliases for vehicle normalization
+# Format: canonical_name: [alias1, alias2, ...]
+
+civic:
+  - civic sedan
+  - civic hatchback
+  - civic coupe
+
+corolla:
+  - corolla sedan
+  - corolla cross
+  - corolla altis
+
+sentra:
+  - sentra sedan
+  - sentra exclusive
+
+focus:
+  - focus sedan
+  - focus hatchback
+  - focus st
+
+accord:
+  - accord sedan
+  - accord hybrid
+
+camry:
+  - camry sedan
+  - camry hybrid
+
+jetta:
+  - jetta sedan
+  - jetta gli
+
+elantra:
+  - elantra sedan
+  - elantra gt
+
+cruze:
+  - cruze sedan
+  - cruze hatchback
+
+altima:
+  - altima sedan
+  - altima coupe
+
+f-150:
+  - f150
+  - f 150
+  - ford f-150
+  - ford f150
+
+silverado:
+  - silverado 1500
+  - silverado 2500
+  - chevy silverado
+
+ram 1500:
+  - ram
+  - dodge ram
+  - ram pickup
+
+escalade:
+  - escalade suv
+  - cadillac escalade
+
+wrangler:
+  - wrangler unlimited
+  - jeep wrangler
+
+cherokee:
+  - grand cherokee
+  - jeep cherokee
+
+expedition:
+  - expedition max
+  - ford expedition
+
+subdurban:
+  - suburban 1500
+  - chevy suburban
+
+tahoe:
+  - tahoe lt
+  - chevy tahoe

@@ -1,0 +1,91 @@
+# Common abbreviations for vehicle descriptions
+# Format: abbreviation: expansion
+
+# Air conditioning & climate
+"a/c": "aire acondicionado"
+"ac": "aire acondicionado"
+"clima": "aire acondicionado"
+
+# Safety systems
+"abs": "sistema antibloqueo"
+"esp": "control estabilidad"
+"tcs": "control traccion"
+"ebd": "distribucion frenado"
+
+# Drivetrain
+"4x4": "traccion integral" 
+"4wd": "traccion integral"
+"awd": "traccion integral"
+"fwd": "traccion delantera"
+"rwd": "traccion trasera"
+
+# Engine specifications
+"cv": "caballos de fuerza"
+"hp": "caballos de fuerza" 
+"bhp": "caballos de fuerza"
+"cc": "centimetros cubicos"
+"l": "litros"
+"v4": "motor v4"
+"v6": "motor v6"
+"v8": "motor v8"
+"i4": "motor 4 cilindros"
+"i6": "motor 6 cilindros"
+
+# Transmission
+"std": "estandar"
+"std.": "estandar" 
+"aut": "automatico"
+"auto": "automatico"
+"man": "manual"
+"mt": "transmision manual"
+"at": "transmision automatica"
+"cvt": "transmision variable continua"
+"dct": "transmision doble embrague"
+
+# Fuel types
+"gas": "gasolina"
+"dies": "diesel"
+"elec": "electrico"
+"hybrid": "hibrido"
+"phev": "hibrido enchufable"
+"bev": "electrico bateria"
+
+# Performance & features
+"turbo": "turboalimentado"
+"pwr": "poder"
+"ltd": "limitado"
+"lux": "lujo"
+"exec": "ejecutivo"
+"spt": "deportivo"
+"sport": "deportivo"
+
+# Body styles & doors
+"suv": "vehiculo utilitario deportivo"
+"mpv": "vehiculo multiproposito"
+"hback": "hatchback"
+"conv": "convertible"
+"2dr": "dos puertas"
+"4dr": "cuatro puertas"
+"5dr": "cinco puertas"
+
+# Cab & bed configurations
+"cab": "cabina"
+"ext": "extendida"
+"crew": "tripulacion"
+"reg": "regular"
+"dbl": "doble"
+"sgl": "individual"
+
+# Common modifiers
+"w/": "con"
+"w/o": "sin"
+"pkg": "paquete"
+"equip": "equipamiento"
+"opt": "opcional"
+"trim": "version"
+
+# Steering & suspension
+"dir": "direccion"
+"asist": "asistida"
+"susp": "suspension"
+"indep": "independiente"

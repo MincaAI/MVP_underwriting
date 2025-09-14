@@ -1,0 +1,58 @@
+# Body type aliases for vehicle normalization
+# Format: canonical_name: [alias1, alias2, ...]
+
+sedan:
+  - sedán
+  - 4 puertas
+  - four door
+  - 4dr
+
+hatchback:
+  - hatch
+  - 5 puertas
+  - five door
+  - 5dr
+
+suv:
+  - sport utility
+  - utility vehicle
+  - camioneta
+
+coupe:
+  - coupé
+  - 2 puertas
+  - two door
+  - 2dr
+
+convertible:
+  - convertible
+  - cabrio
+  - cabriolet
+  - descapotable
+
+pickup:
+  - pick up
+  - pick-up
+  - camioneta pickup
+  - truck
+
+van:
+  - minivan
+  - mini van
+  - passenger van
+  - cargo van
+
+wagon:
+  - station wagon
+  - estate
+  - familiar
+
+crossover:
+  - cross over
+  - cuv
+  - compact utility
+
+roadster:
+  - sport car
+  - deportivo
+  - roadster

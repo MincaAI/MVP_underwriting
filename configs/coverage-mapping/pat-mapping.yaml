@@ -1,0 +1,182 @@
+name: "P-AT Coverage Mapping"
+version: "1.0"
+description: "Mapping from coverage labels to Gcotiza columns"
+
+# Coverage type mappings
+coverage_mappings:
+  # Comprehensive coverage variations
+  "TODO RIESGO":
+    gcotiza_column: "COBERTURA"
+    standardized_value: "TODO RIESGO"
+    aliases:
+      - "todo riesgo"
+      - "comprehensive"
+      - "cobertura completa"
+      - "full coverage"
+      - "amplia"
+      
+  # Liability coverage variations  
+  "RESPONSABILIDAD CIVIL":
+    gcotiza_column: "COBERTURA"
+    standardized_value: "RESPONSABILIDAD CIVIL"
+    aliases:
+      - "responsabilidad civil"
+      - "liability"
+      - "rc"
+      - "terceros"
+      - "civil liability"
+      
+  # Collision coverage
+  "COLISION":
+    gcotiza_column: "COBERTURA"
+    standardized_value: "COLISION"
+    aliases:
+      - "colisión"
+      - "collision"
+      - "choque"
+      - "accidente"
+      
+  # Theft coverage
+  "ROBO":
+    gcotiza_column: "COBERTURA"
+    standardized_value: "ROBO"
+    aliases:
+      - "robo"
+      - "theft"
+      - "hurto"
+      - "robo total"
+      
+  # Fire coverage
+  "INCENDIO":
+    gcotiza_column: "COBERTURA"
+    standardized_value: "INCENDIO"
+    aliases:
+      - "incendio"
+      - "fire"
+      - "fuego"
+      
+  # Natural disasters
+  "DESASTRES NATURALES":
+    gcotiza_column: "COBERTURA"
+    standardized_value: "DESASTRES NATURALES"
+    aliases:
+      - "desastres naturales"
+      - "natural disasters"
+      - "catastrofes naturales"
+      - "fenomenos naturales"
+
+# Limit mappings
+limit_mappings:
+  # Standard limit formats
+  currency_formats:
+    - pattern: "^\\$([0-9,]+)$"
+      type: "USD"
+      multiplier: 1
+      
+    - pattern: "^([0-9,]+)\\s*USD$"
+      type: "USD"
+      multiplier: 1
+      
+    - pattern: "^([0-9,]+)K$"
+      type: "USD"
+      multiplier: 1000
+      
+    - pattern: "^([0-9,]+)M$"
+      type: "USD"  
+      multiplier: 1000000
+      
+  # Common limit values
+  standard_limits:
+    "25000": "$25,000"
+    "50000": "$50,000"
+    "100000": "$100,000"
+    "250000": "$250,000"
+    "500000": "$500,000"
+    "1000000": "$1,000,000"
+
+# Deductible mappings
+deductible_mappings:
+  standard_deductibles:
+    "500": "$500"
+    "1000": "$1,000"
+    "2500": "$2,500"
+    "5000": "$5,000"
+    "10000": "$10,000"
+    
+  percentage_deductibles:
+    "1%": "1% of vehicle value"
+    "2%": "2% of vehicle value"
+    "5%": "5% of vehicle value"
+    "10%": "10% of vehicle value"
+
+# P-AT specific mappings
+pat_mappings:
+  # Personal Auto mappings
+  personal_auto:
+    coverage_codes:
+      "BI": "RESPONSABILIDAD CIVIL"
+      "PD": "DAÑOS A PROPIEDAD"
+      "COMP": "TODO RIESGO"
+      "COLL": "COLISION"
+      "UM": "MOTORISTA SIN SEGURO"
+      "UIM": "MOTORISTA SUBSEGURADO"
+      
+    state_variations:
+      "CA": 
+        minimum_bi: "$15,000/$30,000"
+        minimum_pd: "$5,000"
+      "TX":
+        minimum_bi: "$30,000/$60,000"  
+        minimum_pd: "$25,000"
+      "FL":
+        minimum_pip: "$10,000"
+        minimum_pd: "$10,000"
+
+# Validation rules
+validation_rules:
+  coverage_validation:
+    - rule: "known_coverage_type"
+      message: "Coverage type must be from approved list"
+      
+    - rule: "limit_format"
+      message: "Coverage limit must be in valid currency format"
+      
+    - rule: "deductible_reasonable"
+      message: "Deductible should not exceed coverage limit"
+      
+  data_consistency:
+    - rule: "comprehensive_includes_collision"
+      message: "TODO RIESGO should include collision coverage"
+      
+    - rule: "liability_meets_minimum"
+      message: "Liability limits should meet state minimums"
+
+# Normalization rules
+normalization:
+  text_normalization:
+    - rule: "trim_whitespace"
+    - rule: "standardize_case"
+    - rule: "remove_special_chars"
+    - rule: "standardize_accents"
+    
+  currency_normalization:
+    - rule: "remove_currency_symbols"
+    - rule: "standardize_separators"
+    - rule: "convert_to_numeric"
+    - rule: "format_currency"
+
+# Error handling
+error_handling:
+  unknown_coverage:
+    action: "flag_for_review"
+    default_value: "UNKNOWN"
+    confidence: 0.0
+    
+  invalid_limit:
+    action: "flag_for_review"
+    default_value: "TBD"
+    confidence: 0.0
+    
+  missing_required:
+    action: "fail"
+    message: "Required coverage information missing"

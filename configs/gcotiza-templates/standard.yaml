@@ -1,0 +1,189 @@
+name: "Standard Gcotiza Template"
+version: "2.1"
+description: "Standard Gcotiza Excel export template"
+
+# Column definitions
+columns:
+  - name: "MARCA"
+    type: "text"
+    required: true
+    max_length: 50
+    description: "Vehicle make/brand"
+    
+  - name: "MODELO"  
+    type: "text"
+    required: true
+    max_length: 100
+    description: "Vehicle model"
+    
+  - name: "AÑO"
+    type: "integer"
+    required: true
+    min_value: 1980
+    max_value: 2030
+    description: "Model year"
+    
+  - name: "VIN"
+    type: "text"
+    required: false
+    max_length: 17
+    pattern: "^[A-HJ-NPR-Z0-9]{17}$"
+    description: "Vehicle identification number"
+    
+  - name: "COBERTURA"
+    type: "text"
+    required: true
+    max_length: 100
+    description: "Coverage type"
+    
+  - name: "LIMITE"
+    type: "currency"
+    required: false
+    currency: "USD"
+    description: "Coverage limit"
+    
+  - name: "CVEGS"
+    type: "text"
+    required: true
+    max_length: 20
+    description: "AMIS CVEGS code"
+    
+  - name: "SCORE"
+    type: "decimal"
+    required: false
+    min_value: 0.0
+    max_value: 1.0
+    decimals: 3
+    description: "Confidence score"
+    
+  - name: "REVIEWED"
+    type: "boolean"
+    required: false
+    default: false
+    description: "Manual review flag"
+
+# Excel formatting
+excel_format:
+  # Worksheet settings
+  worksheet:
+    name: "Cotización"
+    freeze_panes: "A2"  # Freeze header row
+    
+  # Header styling
+  header:
+    font:
+      name: "Arial"
+      size: 11
+      bold: true
+      color: "FFFFFF"
+    fill:
+      pattern_type: "solid"
+      fgColor: "366092"
+    alignment:
+      horizontal: "center"
+      vertical: "center"
+    height: 25
+    
+  # Data row styling  
+  data_rows:
+    font:
+      name: "Arial"
+      size: 10
+    alignment:
+      horizontal: "left"
+      vertical: "center"
+    height: 20
+    
+  # Column widths
+  column_widths:
+    "MARCA": 15
+    "MODELO": 25
+    "AÑO": 8
+    "VIN": 20
+    "COBERTURA": 20
+    "LIMITE": 15
+    "CVEGS": 15
+    "SCORE": 10
+    "REVIEWED": 10
+    
+  # Conditional formatting
+  conditional_formatting:
+    - range: "H:H"  # SCORE column
+      rule: "color_scale"
+      min_color: "FF6B6B"  # Red for low scores
+      mid_color: "FFE66D"  # Yellow for medium scores
+      max_color: "4ECDC4"  # Green for high scores
+      
+    - range: "I:I"  # REVIEWED column
+      rule: "icon_set"
+      icon_set: "3TrafficLights1"
+
+# Data validation
+validation:
+  # Required field validation
+  required_fields:
+    error_style: "stop"
+    error_title: "Required Field"
+    error_message: "This field is required"
+    
+  # Data type validation
+  data_types:
+    "AÑO":
+      type: "whole"
+      operator: "between"
+      formula1: 1980
+      formula2: 2030
+      error_title: "Invalid Year"
+      error_message: "Year must be between 1980 and 2030"
+      
+    "SCORE":
+      type: "decimal"
+      operator: "between"
+      formula1: 0
+      formula2: 1
+      error_title: "Invalid Score"
+      error_message: "Score must be between 0 and 1"
+
+# Export options
+export_options:
+  include_formulas: false
+  include_formatting: true
+  include_validation: true
+  compress_file: true
+  
+  # Additional sheets
+  additional_sheets:
+    - name: "Metadata"
+      content: "summary"  # Include processing summary
+      
+    - name: "Errors"
+      content: "errors"   # Include validation errors
+      
+    - name: "Warnings"
+      content: "warnings" # Include warnings
+
+# Metadata sheet content
+metadata_content:
+  - field: "Export Date"
+    value: "{{current_datetime}}"
+    
+  - field: "Total Rows"
+    value: "{{row_count}}"
+    
+  - field: "Error Count"
+    value: "{{error_count}}"
+    
+  - field: "Warning Count"  
+    value: "{{warning_count}}"
+    
+  - field: "Auto-Accept Rate"
+    value: "{{auto_accept_rate}}%"
+    
+  - field: "Review Required"
+    value: "{{review_count}}"
+    
+  - field: "Profile Version"
+    value: "{{profile_version}}"
+    
+  - field: "Processing Time"
+    value: "{{processing_duration}}"

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "ml"
+version = "0.1.0"
+description = "Machine learning utilities for text normalization and embeddings"
+authors = ["Minca AI Team <team@mincaai.com>"]
+packages = [{ include = "app", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+sentence-transformers = "^3.0.0"
+numpy = "^1.24.0"
+scipy = "^1.11.0"
+SQLAlchemy = "^2.0.30"
+psycopg = {extras=["binary"], version="^3.1.18"}
+pgvector = "^0.3.2"
+pandas = "^2.0.0"
+unidecode = "^1.3.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.10.0"
+black = "^24.0"
+ruff = "^0.5.0"

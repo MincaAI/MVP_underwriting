@@ -1,0 +1,25 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "mincaai-mq"
+version = "1.0.0"
+description = "Message queue utilities for Minca AI platform"
+authors = ["Minca AI Team <team@mincaai.com>"]
+license = "MIT"
+packages = [{ include = "app", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+common = { path = "../common", develop = true }
+boto3 = "^1.29.0"
+botocore = "^1.32.0"
+redis = "^5.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-asyncio = "^0.21.0"
+black = "^23.7.0"
+isort = "^5.12.0"
+mypy = "^1.5.0"

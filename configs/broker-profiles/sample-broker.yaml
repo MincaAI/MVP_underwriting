@@ -1,0 +1,124 @@
+name: "Sample Broker Profile"
+version: "1.0"
+description: "Sample broker profile for demonstration"
+
+# Input mapping - how to extract data from broker files
+input_mapping:
+  vehicle_make:
+    columns: ["make", "marca", "vehicle_make"]
+    required: true
+    normalize: true
+  
+  vehicle_model:
+    columns: ["model", "modelo", "vehicle_model"]  
+    required: true
+    normalize: true
+    
+  vehicle_year:
+    columns: ["year", "año", "model_year", "vehicle_year"]
+    required: true
+    type: "integer"
+    range: [1980, 2030]
+    
+  vehicle_vin:
+    columns: ["vin", "chassis", "vehicle_id"]
+    required: false
+    validate_vin: true
+    
+  coverage_type:
+    columns: ["coverage", "cobertura", "coverage_type"]
+    required: true
+    
+  coverage_limit:
+    columns: ["limit", "limite", "suma_asegurada", "coverage_limit"]
+    required: false
+    type: "currency"
+
+# Transformation rules
+transformations:
+  # Standardize vehicle make names
+  vehicle_make:
+    - rule: "normalize_case"
+      params: {"case": "title"}
+    - rule: "map_values"
+      params:
+        mappings:
+          "Toyota": "TOYOTA"
+          "Honda": "HONDA"
+          "Nissan": "NISSAN"
+          "Ford": "FORD"
+          "Chevrolet": "CHEVROLET"
+          "Hyundai": "HYUNDAI"
+          "Kia": "KIA"
+  
+  # Standardize model names
+  vehicle_model:
+    - rule: "normalize_case" 
+      params: {"case": "upper"}
+    - rule: "remove_extra_spaces"
+    - rule: "standardize_model_names"
+  
+  # Validate and normalize year
+  vehicle_year:
+    - rule: "validate_range"
+      params: {"min": 1980, "max": 2030}
+    - rule: "convert_to_int"
+  
+  # Standardize coverage types
+  coverage_type:
+    - rule: "map_values"
+      params:
+        mappings:
+          "todo riesgo": "TODO RIESGO"
+          "responsabilidad civil": "RESPONSABILIDAD CIVIL"
+          "colision": "COLISION"
+          "robo": "ROBO"
+
+# Validation rules
+validations:
+  required_fields:
+    - vehicle_make
+    - vehicle_model
+    - vehicle_year
+    - coverage_type
+    
+  data_quality:
+    - rule: "no_empty_strings"
+      fields: ["vehicle_make", "vehicle_model"]
+    - rule: "valid_year_range"
+      field: "vehicle_year"
+      params: {"min": 1980, "max": 2030}
+    - rule: "known_coverage_types"
+      field: "coverage_type"
+      params:
+        allowed_values:
+          - "TODO RIESGO"
+          - "RESPONSABILIDAD CIVIL"
+          - "COLISION"
+          - "ROBO"
+
+# Output format - how to structure final data
+output_format:
+  gcotiza_mapping:
+    "MARCA": "vehicle_make"
+    "MODELO": "vehicle_model"
+    "AÑO": "vehicle_year"
+    "VIN": "vehicle_vin"
+    "COBERTURA": "coverage_type"
+    "LIMITE": "coverage_limit"
+    "CVEGS": "cvegs_code"  # Added by codifier
+    "SCORE": "confidence"  # Added by codifier
+    
+# Error handling
+error_handling:
+  on_validation_error: "warn"  # warn, skip, fail
+  on_transformation_error: "warn"
+  required_field_missing: "fail"
+  
+# Metadata
+metadata:
+  created_by: "admin"
+  created_at: "2024-01-01"
+  broker_contact: "sample@broker.com"
+  file_formats: ["xlsx", "csv"]
+  expected_columns: 6

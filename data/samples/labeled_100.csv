@@ -1,0 +1,53 @@
+brand,model,year,body,use,description,cvegs_true
+nissan,np300,2020,doble cabina,comercial,"Nissan NP300 DC 2020",123456
+toyota,corolla,2019,sedan,particular,"Toyota Corolla 2019 sedán",234567
+honda,civic,2021,sedan,particular,"Honda Civic 2021",345678
+ford,f150,2020,pickup,comercial,"Ford F-150 2020 pickup",456789
+chevrolet,silverado,2019,pickup,comercial,"Chevrolet Silverado 1500 2019",567890
+volkswagen,jetta,2020,sedan,particular,"VW Jetta 2020 sedán",678901
+mazda,cx-5,2021,suv,particular,"Mazda CX-5 2021 SUV",789012
+hyundai,elantra,2019,sedan,particular,"Hyundai Elantra 2019",890123
+nissan,sentra,2020,sedan,particular,"Nissan Sentra 2020",901234
+toyota,rav4,2021,suv,particular,"Toyota RAV4 2021",012345
+honda,crv,2020,suv,particular,"Honda CR-V 2020",123450
+ford,escape,2019,suv,particular,"Ford Escape 2019",234561
+chevrolet,equinox,2020,suv,particular,"Chevrolet Equinox 2020",345672
+volkswagen,tiguan,2021,suv,particular,"Volkswagen Tiguan 2021",456783
+mazda,mazda3,2019,sedan,particular,"Mazda 3 2019 sedán",567894
+hyundai,tucson,2020,suv,particular,"Hyundai Tucson 2020",678905
+nissan,altima,2021,sedan,particular,"Nissan Altima 2021",789016
+toyota,camry,2019,sedan,particular,"Toyota Camry 2019",890127
+honda,accord,2020,sedan,particular,"Honda Accord 2020",901238
+ford,fusion,2019,sedan,particular,"Ford Fusion 2019",012349
+chevrolet,malibu,2020,sedan,particular,"Chevrolet Malibu 2020",123451
+volkswagen,passat,2021,sedan,particular,"VW Passat 2021",234562
+mazda,mx5,2019,convertible,particular,"Mazda MX-5 2019 convertible",345673
+hyundai,sonata,2020,sedan,particular,"Hyundai Sonata 2020",456784
+nissan,maxima,2021,sedan,particular,"Nissan Maxima 2021",567895
+toyota,prius,2019,hatchback,particular,"Toyota Prius 2019 híbrido",678906
+honda,fit,2020,hatchback,particular,"Honda Fit 2020",789017
+ford,fiesta,2019,hatchback,particular,"Ford Fiesta 2019",890128
+chevrolet,spark,2020,hatchback,particular,"Chevrolet Spark 2020",901239
+volkswagen,golf,2021,hatchback,particular,"VW Golf 2021",012340
+mazda,cx3,2019,suv,particular,"Mazda CX-3 2019",123452
+hyundai,kona,2020,suv,particular,"Hyundai Kona 2020",234563
+nissan,kicks,2021,suv,particular,"Nissan Kicks 2021",345674
+toyota,highlander,2019,suv,particular,"Toyota Highlander 2019",456785
+honda,pilot,2020,suv,particular,"Honda Pilot 2020",567896
+ford,explorer,2019,suv,particular,"Ford Explorer 2019",678907
+chevrolet,tahoe,2020,suv,comercial,"Chevrolet Tahoe 2020",789018
+volkswagen,atlas,2021,suv,particular,"VW Atlas 2021",890129
+mazda,cx9,2019,suv,particular,"Mazda CX-9 2019",901230
+hyundai,santa fe,2020,suv,particular,"Hyundai Santa Fe 2020",012341
+nissan,armada,2021,suv,comercial,"Nissan Armada 2021",123453
+toyota,sequoia,2019,suv,comercial,"Toyota Sequoia 2019",234564
+honda,ridgeline,2020,pickup,comercial,"Honda Ridgeline 2020",345675
+ford,ranger,2019,pickup,comercial,"Ford Ranger 2019",456786
+chevrolet,colorado,2020,pickup,comercial,"Chevrolet Colorado 2020",567897
+volkswagen,amarok,2021,pickup,comercial,"VW Amarok 2021",678908
+mazda,bt50,2019,pickup,comercial,"Mazda BT-50 2019",789019
+hyundai,santa cruz,2020,pickup,comercial,"Hyundai Santa Cruz 2020",890120
+nissan,frontier,2021,pickup,comercial,"Nissan Frontier 2021",901231
+toyota,tacoma,2019,pickup,comercial,"Toyota Tacoma 2019",012342
+honda,passport,2020,suv,particular,"Honda Passport 2020",123454
+ford,bronco,2021,suv,particular,"Ford Bronco 2021",234565

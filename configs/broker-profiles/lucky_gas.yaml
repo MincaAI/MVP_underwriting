@@ -1,0 +1,37 @@
+# Lucky Gas broker profile configuration
+# Transforms Lucky Gas Excel files to canonical vehicle format
+
+detect:
+  required_headers: ["marca", "submarca", "año"]   # broker's raw headers
+
+mapping:
+  columns:
+    "marca": brand
+    "submarca": model
+    "año": year
+    "carrocería": body
+    "uso": use
+    "descripción": description
+    "placa": license_plate
+    "valor asegurado": insured_value
+    "prima": premium
+  normalize:
+    brand: "lower, strip, deburr"
+    model: "strip, deburr"
+    body: "lower, strip, deburr"
+    use: "lower, strip"
+
+compute:
+  add_columns:
+    description: "{brand} {model} {year} {body} {use}"
+    full_description: "{brand} {model} {year} - {body} tipo {use}"
+
+validate:
+  required: ["brand", "model", "year"]
+  ranges:
+    year: 
+      min: 1990
+      max: 2100
+  enums:
+    use: ["comercial", "carga", "pasajeros", "particular"]
+    body: ["sedan", "hatchback", "suv", "pickup", "convertible", "coupe", "van", "wagon"]

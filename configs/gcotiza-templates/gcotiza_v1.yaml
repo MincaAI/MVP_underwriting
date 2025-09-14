@@ -1,0 +1,135 @@
+# Gcotiza export template v1
+# Defines the structure and column mapping for Gcotiza Excel exports
+
+sheet: "COTIZACION"
+
+columns:
+  # Basic vehicle information
+  - name: "CLAVE VEHICULO"   # CVEGS code
+    key: "cvegs"
+    type: "text"
+  - name: "MARCA"
+    key: "brand"
+    type: "text"
+  - name: "MODELO"
+    key: "model"
+    type: "text"
+  - name: "AÑO"
+    key: "year"
+    type: "int"
+  - name: "CARROCERIA"
+    key: "body"
+    type: "text"
+  - name: "USO"
+    key: "use"
+    type: "text"
+  - name: "DESCRIPCION"
+    key: "description"
+    type: "text"
+  
+  # Vehicle details
+  - name: "PLACA"
+    key: "license_plate"
+    type: "text"
+  - name: "VALOR ASEGURADO"
+    key: "insured_value"
+    type: "float"
+  - name: "PRIMA"
+    key: "premium"
+    type: "float"
+  
+  # Coverage columns (P-AT range)
+  # These will be populated by coverage mapping in step 12
+  - name: "DED DM PP"           # Column P
+    key: "coverage.ded_dm_pp"
+    type: "percent"
+  - name: "DED RT"              # Column Q
+    key: "coverage.ded_rt"
+    type: "percent"
+  - name: "DED ROBO PARCIAL"    # Column R
+    key: "coverage.ded_robo_parcial"
+    type: "percent"
+  - name: "RC LIMITE"           # Column S
+    key: "coverage.rc_limite"
+    type: "float"
+  - name: "RC DEDUCIBLE"        # Column T
+    key: "coverage.rc_deducible"
+    type: "float"
+  - name: "GASTOS MEDICOS"      # Column U
+    key: "coverage.gastos_medicos"
+    type: "float"
+  - name: "ASISTENCIA VIAJERO"  # Column V
+    key: "coverage.asistencia_viajero"
+    type: "text"
+  - name: "ASISTENCIA LEGAL"    # Column W
+    key: "coverage.asistencia_legal"
+    type: "text"
+  - name: "EXTENSIONES"         # Column X
+    key: "coverage.extensiones"
+    type: "text"
+  - name: "ADAPTACIONES"        # Column Y
+    key: "coverage.adaptaciones"
+    type: "text"
+  - name: "ACCESORIOS"          # Column Z
+    key: "coverage.accesorios"
+    type: "text"
+  - name: "EQUIPO ESPECIAL"     # Column AA
+    key: "coverage.equipo_especial"
+    type: "text"
+  - name: "OTROS BENEFICIOS"    # Column AB
+    key: "coverage.otros_beneficios"
+    type: "text"
+  - name: "CLAUSULAS ADICIONALES"  # Column AC
+    key: "coverage.clausulas_adicionales"
+    type: "text"
+  - name: "NOTAS"               # Column AD
+    key: "coverage.notas"
+    type: "text"
+  - name: "OBSERVACIONES"       # Column AE
+    key: "coverage.observaciones"
+    type: "text"
+  - name: "CONDICIONES ESPECIALES"  # Column AF
+    key: "coverage.condiciones_especiales"
+    type: "text"
+  - name: "TERRITORIO"          # Column AG
+    key: "coverage.territorio"
+    type: "text"
+  - name: "VIGENCIA INICIO"     # Column AH
+    key: "coverage.vigencia_inicio"
+    type: "date"
+  - name: "VIGENCIA FIN"        # Column AI
+    key: "coverage.vigencia_fin"
+    type: "date"
+  - name: "FORMA PAGO"          # Column AJ
+    key: "coverage.forma_pago"
+    type: "text"
+  - name: "MONEDA"              # Column AK
+    key: "coverage.moneda"
+    type: "text"
+  - name: "COMISION"            # Column AL
+    key: "coverage.comision"
+    type: "percent"
+  - name: "IVA"                 # Column AM
+    key: "coverage.iva"
+    type: "percent"
+  - name: "TOTAL"               # Column AN
+    key: "coverage.total"
+    type: "float"
+  - name: "STATUS"              # Column AO
+    key: "coverage.status"
+    type: "text"
+  - name: "FECHA PROCESO"       # Column AP
+    key: "coverage.fecha_proceso"
+    type: "date"
+  - name: "USUARIO"             # Column AQ
+    key: "coverage.usuario"
+    type: "text"
+  - name: "REVISION"            # Column AR
+    key: "coverage.revision"
+    type: "text"
+  - name: "APROBACION"          # Column AS
+    key: "coverage.aprobacion"
+    type: "text"
+  - name: "COMENTARIOS FINALES" # Column AT
+    key: "coverage.comentarios_finales"
+    type: "text"

@@ -1,0 +1,88 @@
+# Brand aliases for vehicle normalization
+# Format: canonical_name: [alias1, alias2, ...]
+
+volkswagen:
+  - vw
+  - v.w.
+  - volks
+  - volkswaguen
+
+nissan:
+  - nissán
+  - nisan
+  - nissan motor
+
+toyota:
+  - toyoya
+  - toyota motor
+
+chevrolet:
+  - chevy
+  - chev
+  - chevrolet motor
+
+ford:
+  - ford motor
+  - ford motors
+
+honda:
+  - honda motor
+
+hyundai:
+  - hyundai motor
+  - hundai
+
+mercedes-benz:
+  - mercedes
+  - benz
+  - mb
+  - mercedes benz
+
+bmw:
+  - bmw motor
+
+audi:
+  - audi ag
+
+mazda:
+  - mazda motor
+
+kia:
+  - kia motors
+
+jeep:
+  - jeep chrysler
+
+dodge:
+  - dodge ram
+  - ram
+
+mitsubishi:
+  - mitsubishi motors
+  - mitsu
+
+subaru:
+  - subaru motor
+
+suzuki:
+  - suzuki motor
+
+volvo:
+  - volvo car
+  - volvo motor
+
+renault:
+  - renault motor
+
+peugeot:
+  - peugeot motor
+
+fiat:
+  - fiat chrysler
+
+land rover:
+  - land-rover
+  - landrover
+
+jaguar:
+  - jaguar land rover

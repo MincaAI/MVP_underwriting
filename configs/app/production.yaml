@@ -1,0 +1,95 @@
+environment: production
+debug: false
+log_level: INFO
+
+# Database (AWS RDS PostgreSQL with pgvector)
+database:
+  host: ${DB_HOST}
+  port: 5432
+  name: ${DB_NAME}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  pool_size: 20
+  max_overflow: 30
+
+# Redis (AWS ElastiCache)
+redis:
+  host: ${REDIS_HOST}
+  port: 6379
+  db: 0
+  password: ${REDIS_PASSWORD}
+  max_connections: 50
+
+# Storage (AWS S3)
+storage:
+  provider: s3
+  endpoint: https://s3.${AWS_REGION}.amazonaws.com
+  access_key: ${AWS_ACCESS_KEY_ID}
+  secret_key: ${AWS_SECRET_ACCESS_KEY}
+  bucket_raw: ${S3_BUCKET_RAW}
+  bucket_exports: ${S3_BUCKET_EXPORTS}
+  region: ${AWS_REGION}
+
+# Message Queues (AWS SQS)
+queues:
+  extractor: "${PROJECT_NAME}-extractor"
+  codifier: "${PROJECT_NAME}-codifier"
+  transform: "${PROJECT_NAME}-transform"
+  exporter: "${PROJECT_NAME}-exporter"
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "https://${DOMAIN}"
+    - "https://www.${DOMAIN}"
+  jwt_secret: ${JWT_SECRET}
+
+# ML Configuration
+ml:
+  models:
+    embedding: "sentence-transformers/all-MiniLM-L6-v2"
+    reranker: "cross-encoder/ms-marco-MiniLM-L-2-v2"
+  
+  thresholds:
+    auto_accept: 0.85
+    review_required: 0.70
+    
+  batch_sizes:
+    codification: 100
+    extraction: 200
+
+# Feature Flags
+features:
+  enable_auto_codify: true
+  enable_batch_processing: true
+  enable_audit_logging: true
+  enable_file_validation: true
+  enable_real_time_updates: true
+
+# File Processing
+file_processing:
+  max_file_size: 104857600  # 100MB
+  allowed_extensions:
+    - .xlsx
+    - .xls
+    - .csv
+    - .pdf
+    - .eml
+  
+  extraction_timeout: 600  # 10 minutes
+  processing_timeout: 1200  # 20 minutes
+
+# Monitoring
+monitoring:
+  enable_metrics: true
+  metrics_port: 9090
+  enable_tracing: true
+  
+# Production specific
+production:
+  auto_reload: false
+  mock_external_services: false
+  seed_data: false
+  enable_debug_routes: false

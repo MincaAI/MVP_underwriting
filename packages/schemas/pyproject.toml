@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "schemas"
+version = "0.1.0"
+description = "Canonical Pydantic schemas for Minca AI Insurance Platform"
+authors = ["Minca AI Team <team@mincaai.com>"]
+packages = [{ include = "app", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pydantic = "^2.8.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.0"
+ruff = "^0.5.0"
+mypy = "^1.10"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "profiles"
+version = "0.1.0"
+description = "Broker profile DSL and transformation engine"
+authors = ["Minca AI Team <team@mincaai.com>"]
+packages = [{ include = "app", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pydantic = "^2.7.0"
+pandas = "^2.0.0"
+PyYAML = "^6.0.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.10.0"
+black = "^24.0"
+ruff = "^0.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

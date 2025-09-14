@@ -1,0 +1,112 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: minca_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: ["5432:5432"]
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: minca_minio
+    command: server --console-address ":9001" /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - minio_data:/data
+
+  mc:
+    image: minio/mc:latest
+    container_name: minca_minio_mc
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+      mc mb -p local/${S3_BUCKET_RAW} || true;
+      mc mb -p local/${S3_BUCKET_EXPORTS} || true;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: minca_api
+    env_file:
+      - configs/env/.env.development
+      - configs/env/service-specific/.env.api
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET_RAW: ${S3_BUCKET_RAW}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS}
+      QUEUE_BACKEND: ${QUEUE_BACKEND:-local}
+    ports: ["8000:8000"]
+    depends_on: [db, minio, mc]
+    volumes:
+      - ./services/api/src:/app/services/api/src  # hot reload-friendly
+
+  document-processor:
+    build:
+      context: .
+      dockerfile: services/document-processor/Dockerfile
+    container_name: minca_document_processor
+    env_file:
+      - configs/env/.env.development
+      - configs/env/service-specific/.env.document-processor
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET_RAW: ${S3_BUCKET_RAW}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS}
+      QUEUE_BACKEND: ${QUEUE_BACKEND:-local}
+    ports: ["8001:8001"]
+    depends_on: [db, minio, mc]
+    volumes:
+      - ./services/document-processor/src:/app/services/document-processor/src  # hot reload
+
+  vehicle-codifier:
+    build:
+      context: .
+      dockerfile: services/vehicle-codifier/Dockerfile
+    container_name: minca_vehicle_codifier
+    env_file:
+      - configs/env/.env.development
+      - configs/env/service-specific/.env.vehicle-codifier
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    ports: ["8002:8002"]
+    depends_on: [db]
+    volumes:
+      - ./services/vehicle-codifier/src:/app/src  # hot reload
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: minca_ui
+    env_file:
+      - ../configs/env/service-specific/.env.ui
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_DOCUMENT_PROCESSOR_URL: http://localhost:8001
+    ports: ["3000:3000"]
+    depends_on: [api, document-processor]
+    volumes:
+      - ./ui/src:/app/src  # hot reload for development
+
+volumes:
+  db_data:
+  minio_data:

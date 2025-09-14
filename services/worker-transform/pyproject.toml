@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "worker-transform"
+version = "0.1.0"
+description = "Transform worker service for broker data processing"
+authors = ["Minca AI Team <team@mincaai.com>"]
+packages = [{ include = "worker_transform", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+SQLAlchemy = "^2.0.30"
+psycopg = {extras=["binary"], version="^3.1.18"}
+pandas = "^2.0.0"
+openpyxl = "^3.1.0"
+PyYAML = "^6.0.0"
+boto3 = "^1.34.0"
+db = { path = "../../packages/db", develop = true }
+profiles = { path = "../../packages/profiles", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.10.0"
+black = "^24.0"
+ruff = "^0.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
