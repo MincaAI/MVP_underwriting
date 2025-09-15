@@ -15,8 +15,15 @@ import pathlib
 current_dir = pathlib.Path(__file__).parent
 project_root = current_dir.parent.parent.parent.parent
 sys.path.insert(0, str(project_root / "packages" / "mq" / "src"))
+sys.path.insert(0, str(project_root / "packages" / "schemas" / "src"))
 
+# Import from MQ package first
 from app.mq.queue_factory import QueueFactory
+from app.mq.config import QueueNames
+
+# Import from schemas package with explicit path
+sys.path.insert(0, str(project_root / "packages" / "schemas" / "src"))
+from app.mq.messages import create_pre_analysis_message, message_to_dict
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -196,34 +203,33 @@ async def process_manual_email(
             db.commit()
             logger.info("Successfully committed database transaction")
             
-            # Send SQS messages for each attachment
+            # Send pre-analysis message to queue
             publisher = QueueFactory.get_publisher()
-            sqs_messages_sent = 0
             
-            for i, attachment_info in enumerate(attachment_data):
-                try:
-                    message = {
-                        "msg_id": str(uuid.uuid4()),
-                        "case_id": case_id,
-                        "run_id": run_id,
-                        "component": "EXTRACT",
-                        "payload": {
-                            "s3_uri": attachment_info['s3_uri'],
-                            "file_name": attachment_info['original_name'],
-                            "profile": 'generic.yaml',
-                            "file_size": attachment_info['file_size'],
-                            "file_hash": attachment_info['sha256'],
-                            "attachment_index": i,
-                            "email_message_id": email_message.id
-                        }
-                    }
-                    
-                    await publisher.send_message("mvp-underwriting-extractor", message)
-                    sqs_messages_sent += 1
-                    logger.info(f"Sent EXTRACT message for attachment {i+1}: {attachment_info['original_name']}")
-                    
-                except Exception as sqs_error:
-                    logger.error(f"Failed to send SQS message for attachment {i+1}: {sqs_error}")
+            try:
+                # Create pre-analysis message using our new schema
+                pre_analysis_message = create_pre_analysis_message(
+                    case_id=case_id,
+                    email_message_id=email_message.id,
+                    from_email=from_email,
+                    subject=subject,
+                    content=content,
+                    attachments=attachment_data,
+                    profile='generic.yaml'
+                )
+                
+                # Convert to dict for queue transmission
+                message_dict = message_to_dict(pre_analysis_message)
+                
+                # Send to pre-analysis queue
+                await publisher.send_message(QueueNames.PRE_ANALYSIS, message_dict)
+                
+                logger.info(f"Sent pre-analysis message for case {case_id} with {len(attachment_data)} attachments")
+                sqs_messages_sent = 1  # One pre-analysis message sent
+                
+            except Exception as sqs_error:
+                logger.error(f"Failed to send pre-analysis message: {sqs_error}")
+                sqs_messages_sent = 0
             
             return {
                 "case_id": case_id,
@@ -424,35 +430,45 @@ async def process_email(email_id: int):
         
         db.commit()
         
-        # Send SQS messages for processing if there are attachments
+        # Send pre-analysis message for processing if there are attachments
         if email.attachments:
             publisher = QueueFactory.get_publisher()
             sqs_messages_sent = 0
             
-            for i, attachment in enumerate(email.attachments):
-                try:
-                    message = {
-                        "msg_id": str(uuid.uuid4()),
-                        "case_id": case_id,
-                        "run_id": run_id,
-                        "component": "EXTRACT",
-                        "payload": {
-                            "s3_uri": attachment.s3_uri,
-                            "file_name": attachment.original_name,
-                            "profile": 'generic.yaml',
-                            "file_size": attachment.file_size,
-                            "file_hash": attachment.sha256,
-                            "attachment_index": i,
-                            "email_message_id": email_id
-                        }
-                    }
-                    
-                    await publisher.send_message("mvp-underwriting-extractor", message)
-                    sqs_messages_sent += 1
-                    logger.info(f"Sent EXTRACT message for attachment: {attachment.original_name}")
-                    
-                except Exception as sqs_error:
-                    logger.error(f"Failed to send SQS message for attachment {attachment.original_name}: {sqs_error}")
+            try:
+                # Prepare attachment data
+                attachment_data = []
+                for attachment in email.attachments:
+                    attachment_data.append({
+                        'original_name': attachment.original_name,
+                        'mime_type': attachment.mime_type,
+                        'file_size': attachment.file_size,
+                        'sha256': attachment.sha256,
+                        's3_uri': attachment.s3_uri
+                    })
+                
+                # Create pre-analysis message using our new schema
+                pre_analysis_message = create_pre_analysis_message(
+                    case_id=case_id,
+                    email_message_id=email_id,
+                    from_email=email.from_email,
+                    subject=email.subject,
+                    content=email.content or "",
+                    attachments=attachment_data,
+                    profile='generic.yaml'
+                )
+                
+                # Convert to dict for queue transmission
+                message_dict = message_to_dict(pre_analysis_message)
+                
+                # Send to pre-analysis queue
+                await publisher.send_message(QueueNames.PRE_ANALYSIS, message_dict)
+                
+                logger.info(f"Sent pre-analysis message for case {case_id} with {len(attachment_data)} attachments")
+                sqs_messages_sent = 1
+                
+            except Exception as sqs_error:
+                logger.error(f"Failed to send pre-analysis message: {sqs_error}")
         
         return {
             "case_id": case_id,

@@ -30,6 +30,7 @@ if is_docker_environment():
             str(project_root / "packages" / "db" / "src"),
             str(project_root / "packages" / "storage" / "src"),
             str(project_root / "packages" / "schemas" / "src"),
+            str(project_root / "packages" / "mq" / "src"),
         ]
         
         for path in reversed(paths_to_add):
@@ -50,6 +51,7 @@ else:
         str(project_root / "packages" / "db" / "src"),
         str(project_root / "packages" / "storage" / "src"),
         str(project_root / "packages" / "schemas" / "src"),
+        str(project_root / "packages" / "mq" / "src"),
     ]
     
     # Force add paths at the beginning of sys.path for priority
