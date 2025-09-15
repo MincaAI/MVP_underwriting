@@ -188,6 +188,134 @@ The Minca AI Insurance Platform is an intelligent underwriting automation system
 
 ## Data Flow Architecture
 
+### **Claveteador Workflow System**
+
+The Claveteador workflow provides a complete end-to-end process for insurance case processing, from smart intake through vehicle matching to final export.
+
+```
+Smart Intake → Claveteador → Vehicle Matching → Excel Export
+     ↓              ↓              ↓              ↓
+Email Processing  Data Review   AMIS Matching   Final Export
+Attachment Parse  Form Validation  Code Assignment  Excel Generation
+Broker Detection  Coverage Setup   Manual Editing   Agent Discount
+```
+
+#### **Complete Workflow Architecture**
+
+```
+1. Smart Intake Dashboard
+   ├── Display processed email results
+   ├── Show pre-analysis status (Completo/Incompleto)
+   ├── Filter and search capabilities
+   └── Action buttons (Process/Ask Info)
+   │
+   ▼
+2. Claveteador Data Preprocessing
+   ├── Email content display and validation
+   ├── Company information form
+   │   ├── Nombre, RFC, Domicilio
+   │   ├── Actividad, Uso, Vigencia
+   │   └── Missing field highlighting
+   ├── Coverage requirements configuration
+   │   ├── Auto coverage (Daños, Robo, RC)
+   │   ├── Remolques coverage
+   │   ├── Camiones Pesado coverage
+   │   └── Moto coverage
+   ├── Attachments management
+   │   ├── Excel file display
+   │   ├── Vehicle count detection
+   │   └── Download functionality
+   ├── Claims history integration
+   │   ├── PDF report display
+   │   ├── Claims statistics
+   │   └── Download capability
+   └── Validation and proceed to matching
+   │
+   ▼
+3. Vehicle Matching (AMIS Codification)
+   ├── Codification results summary
+   │   ├── Total vehicles count
+   │   ├── AMIS found (success rate)
+   │   ├── Uncertain matches
+   │   └── Failed matches
+   ├── Interactive vehicle data table
+   │   ├── Status indicators (Complete/Missing/Failed)
+   │   ├── Vehicle details (Marca, Descripción, VIN, Año)
+   │   ├── Coverage and suma asegurada
+   │   ├── AMIS codes with status (OK/FAIL)
+   │   └── Inline editing capabilities
+   ├── Filtering and pagination
+   │   ├── Filter by AMIS status
+   │   ├── Search functionality
+   │   └── Pagination controls
+   └── AMIS validation and export preparation
+   │
+   ▼
+4. Excel Export Generation
+   ├── Final vehicles data table
+   │   ├── All Mexican insurance columns
+   │   ├── Marca, Serie (VIN), Año, Paquete
+   │   ├── Tipo Servicio, Tipo de Uso
+   │   ├── Valor Vehiculo, DED columns
+   │   └── SA RC LUC, A. JURIDICA
+   ├── Agent discount configuration
+   │   ├── Editable discount percentage
+   │   ├── Real-time calculation
+   │   └── Applied to final pricing
+   ├── Export functionality
+   │   ├── Excel Cotizador generation
+   │   ├── Professional formatting
+   │   └── Download with discount applied
+   └── Workflow completion
+```
+
+#### **Frontend Component Architecture**
+
+```
+NewDashboard (Main Container)
+├── SmartIntakeResults
+│   ├── Results table with filtering
+│   ├── Status and pre-analysis badges
+│   ├── Action buttons (Process/Ask Info)
+│   └── Navigation to Claveteador
+├── Claveteador
+│   ├── Smart Intake email display
+│   ├── Email processing details
+│   ├── Company information form
+│   ├── Coverage requirements tables
+│   ├── Attachments management
+│   ├── Claims history display
+│   └── Navigation to Vehicle Matching
+├── VehicleMatching
+│   ├── Codification results summary
+│   ├── Interactive vehicle data table
+│   ├── Inline editing capabilities
+│   ├── Filtering and pagination
+│   └── AMIS validation and export
+└── ExcelExport
+    ├── Final vehicles data table
+    ├── Agent discount controls
+    ├── Excel generation functionality
+    └── Workflow completion
+```
+
+#### **State Management Flow**
+
+```
+Dashboard State Management
+├── currentView: 'dashboard' | 'claveteador' | 'vehicleMatching' | 'export'
+├── selectedCase: SmartIntakeResult | null
+├── Navigation handlers
+│   ├── handleProcess() → Navigate to Claveteador
+│   ├── handleProceedToMatching() → Navigate to Vehicle Matching
+│   ├── handleValidateAmis() → Navigate to Export
+│   └── handleBack() → Navigate to previous step
+└── Data flow
+    ├── Case data passed between components
+    ├── Real-time status updates
+    └── Workflow progress tracking
+```
+
 ### **Hybrid Broker Profile Workflow**
 
 ```

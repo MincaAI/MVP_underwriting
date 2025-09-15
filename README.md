@@ -241,10 +241,51 @@ GET /metrics
 
 ## 📊 Processing Workflow
 
+### Claveteador End-to-End Workflow
+
+The platform now features a complete **Claveteador workflow** that provides an intuitive, step-by-step process for insurance case processing:
+
+```
+Smart Intake → Claveteador → Vehicle Matching → Excel Export
+     ↓              ↓              ↓              ↓
+Email Processing  Data Review   AMIS Matching   Final Export
+Attachment Parse  Form Validation  Code Assignment  Excel Generation
+Broker Detection  Coverage Setup   Manual Editing   Agent Discount
+```
+
+#### **Step 1: Smart Intake Dashboard**
+- **Email Results Display**: Shows processed smart intake cases with status indicators
+- **Pre-Analysis Status**: Visual badges for "Completo" vs "Incompleto" cases
+- **Action Buttons**: "Process" for complete cases, "Ask Info" for incomplete ones
+- **Filtering & Search**: Filter by status, date, and other criteria
+
+#### **Step 2: Claveteador (Data Preprocessing)**
+- **Email Content Review**: Display original email with subject, sender, content
+- **Company Information Form**: Editable form with required fields (Nombre, RFC, Domicilio, etc.)
+- **Coverage Configuration**: Interactive tables for Auto, Remolques, Camiones Pesado, Moto coverage
+- **Attachments Management**: Excel file display with vehicle count detection
+- **Claims History**: PDF reports with download functionality
+- **Missing Field Highlighting**: Yellow highlights and red labels for incomplete data
+
+#### **Step 3: Vehicle Matching (AMIS Codification)**
+- **Codification Summary**: Statistics showing Total Vehicles, AMIS Found, Uncertain, Failed
+- **Interactive Vehicle Table**: Editable table with inline editing for corrections
+- **Status Indicators**: Visual status for Complete, Missing VIN/Suma, Uncertain, Failed
+- **AMIS Code Validation**: OK/FAIL status with manual override capability
+- **Filtering & Pagination**: Filter by AMIS status, paginated results
+
+#### **Step 4: Excel Export**
+- **Final Data Review**: Complete Mexican insurance columns (Marca, Serie, Año, etc.)
+- **Agent Discount Control**: Editable discount percentage (default 15%)
+- **Professional Export**: Generate Excel Cotizador with proper formatting
+- **Workflow Completion**: All steps marked as completed
+
+### Traditional Processing Pipeline
+
 1. **📁 Extract**: Parse Excel/CSV files with intelligent header mapping
 2. **🔄 Transform**: Apply broker profile rules (normalize, validate, compute fields)
 3. **🤖 Codify**: ML embeddings + fuzzy matching → AMIS CVEGS codes + confidence
-4. **👀 Review**: Manual review of low-confidence matches (future)
+4. **👀 Review**: Manual review of low-confidence matches via Claveteador workflow
 5. **📤 Export**: Generate Gcotiza-ready Excel with professional formatting + S3 upload
 
 ### Document Processing Pipeline

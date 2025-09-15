@@ -12,5 +12,5 @@ RUN poetry config virtualenvs.create false \
  && poetry install --no-interaction --no-ansi --no-root
 
 EXPOSE 8001
-# Run the simplified local runner which matches the current DB schema
-CMD ["poetry", "run", "python", "/app/services/document-processor/run_local.py"]
+# Run the document processor FastAPI service
+CMD ["poetry", "run", "python", "/app/services/document-processor/src/document_processor/main.py"]

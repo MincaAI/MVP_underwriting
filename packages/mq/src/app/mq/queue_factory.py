@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any, Callable, Optional
 from .local_queue import local_queue
 from .consumer import SQSConsumer, SQSPublisher
+from .config import get_queue_config, QueueNames, is_local_environment, is_sqs_environment
 
 logger = logging.getLogger(__name__)
 
@@ -18,27 +19,55 @@ class QueueFactory:
     @staticmethod
     def get_publisher():
         """Get message publisher"""
-        backend = os.getenv("QUEUE_BACKEND", "local")
-        logger.info(f"Creating publisher with backend: {backend}")
+        config = get_queue_config()
+        backend = config.get_backend()
+        logger.info(f"Creating publisher with backend: {backend} (environment: {config.environment})")
         
         if backend == "local":
             return LocalPublisher()
         else:
-            return SQSPublisher()
+            return SQSPublisher(region=config.get_region())
     
     @staticmethod
     def get_consumer(queue_name: str):
         """Get message consumer"""
-        backend = os.getenv("QUEUE_BACKEND", "local")
-        logger.info(f"Creating consumer for queue {queue_name} with backend: {backend}")
+        config = get_queue_config()
+        backend = config.get_backend()
+        
+        # Get the full queue name with environment prefix
+        full_queue_name = config.get_queue_name(queue_name)
+        
+        logger.info(f"Creating consumer for queue {full_queue_name} with backend: {backend} (environment: {config.environment})")
         
         if backend == "local":
-            return LocalConsumer(queue_name)
+            return LocalConsumer(full_queue_name, config=config)
         else:
-            return SQSConsumer(queue_name)
+            return SQSConsumer(full_queue_name, region=config.get_region(), config=config)
+    
+    @staticmethod
+    def get_queue_name(base_name: str) -> str:
+        """Get the full queue name with environment prefix"""
+        config = get_queue_config()
+        return config.get_queue_name(base_name)
+    
+    @staticmethod
+    def get_config() -> Dict[str, Any]:
+        """Get current queue configuration"""
+        config = get_queue_config()
+        return config.to_dict()
+    
+    @staticmethod
+    def list_all_queues() -> Dict[str, str]:
+        """List all available queues with their full names"""
+        config = get_queue_config()
+        return config.get_all_queue_names()
 
 class LocalPublisher:
     """Local message publisher using in-memory queue"""
+    
+    def __init__(self, config=None):
+        """Initialize local publisher with configuration."""
+        self.config = config or get_queue_config()
     
     async def send_message(
         self, 
@@ -48,6 +77,7 @@ class LocalPublisher:
         message_attributes: Optional[Dict[str, Dict[str, Any]]] = None
     ) -> str:
         """Send message to local queue"""
+        # Use the full queue name (already has prefix if needed)
         return await local_queue.send_message(queue_name, message, delay_seconds)
     
     async def send_batch(
@@ -66,9 +96,11 @@ class LocalPublisher:
 class LocalConsumer:
     """Local message consumer using in-memory queue"""
     
-    def __init__(self, queue_name: str, region: Optional[str] = None):
+    def __init__(self, queue_name: str, region: Optional[str] = None, config=None):
+        """Initialize local consumer with configuration."""
         self.queue_name = queue_name
         self.region = region
+        self.config = config or get_queue_config()
     
     async def consume(
         self, 
@@ -78,6 +110,10 @@ class LocalConsumer:
         visibility_timeout: int = 30
     ):
         """Consume messages from local queue"""
+        # Use configuration defaults if not specified
+        if visibility_timeout == 30:  # Default value
+            visibility_timeout = self.config.get_visibility_timeout()
+        
         await local_queue.consume(
             self.queue_name, 
             handler, 

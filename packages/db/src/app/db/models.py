@@ -40,6 +40,10 @@ class Case(Base):
     filename: Mapped[str] = mapped_column(String, nullable=True)
     email_message_id: Mapped[int] = mapped_column(ForeignKey("email_message.id", ondelete="SET NULL"), nullable=True, index=True)
     status: Mapped[CaseStatus] = mapped_column(Enum(CaseStatus), default=CaseStatus.NEW, nullable=False)
+    pre_analysis_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
+    pre_analysis_completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    missing_requirements: Mapped[dict] = mapped_column(JSON, nullable=True)
+    pre_analysis_notes: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

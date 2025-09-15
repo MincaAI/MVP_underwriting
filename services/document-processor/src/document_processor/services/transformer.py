@@ -18,7 +18,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent
 
 from sqlalchemy.orm import Session
 from app.db.session import engine
-from app.db.models import Run, Row, Transform, RunStatus, Component
+from app.db.models import Run, Row, RunStatus, Component
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,6 @@ class DocumentTransformer:
                     case_id=run.case_id,
                     component=Component.TRANSFORM,
                     status=RunStatus.STARTED,
-                    parent_run_id=run_id,
                     started_at=datetime.utcnow()
                 )
                 session.add(transform_run)
@@ -102,8 +101,8 @@ class DocumentTransformer:
             # Update transform run with completion
             with Session(engine) as session:
                 transform_run = session.get(Run, f"{run_id}_transform")
-                transform_run.status = RunStatus.COMPLETED
-                transform_run.completed_at = datetime.utcnow()
+                transform_run.status = RunStatus.SUCCESS
+                transform_run.finished_at = datetime.utcnow()
                 transform_run.metrics = metrics
                 session.commit()
             
@@ -358,16 +357,17 @@ class DocumentTransformer:
         try:
             with Session(engine) as session:
                 for row_data in transformed_rows:
-                    # Create Transform record
-                    transform = Transform(
-                        id=f"transform_{row_data.get('id')}",
-                        run_id=transform_run_id,
-                        row_id=row_data.get('id'),
-                        transformed_data=row_data,
-                        validation_errors=row_data.get('validation_errors', []),
-                        created_at=datetime.utcnow()
-                    )
-                    session.add(transform)
+                    # Update existing Row with transformed data
+                    row_id = row_data.get('id')
+                    if row_id:
+                        row = session.get(Row, row_id)
+                        if row:
+                            row.transformed_data = row_data
+                            row.updated_at = datetime.utcnow()
+                            # Store validation errors in the errors field
+                            if row_data.get('validation_errors'):
+                                row.errors = row.errors or {}
+                                row.errors['validation'] = row_data.get('validation_errors')
                 
                 session.commit()
                 self.logger.info(f"Stored {len(transformed_rows)} transformed rows for run {transform_run_id}")

@@ -223,6 +223,68 @@ npm run dev
 # Application available at: http://localhost:3000
 ```
 
+### **5. Claveteador Workflow Components**
+
+The frontend now includes a complete **Claveteador workflow** with the following components:
+
+#### **Component Structure**
+```
+ui/src/components/
+├── NewDashboard.tsx          # Main workflow container
+├── SmartIntakeResults.tsx    # Step 1: Smart intake dashboard
+├── Claveteador.tsx          # Step 2: Data preprocessing
+├── VehicleMatching.tsx      # Step 3: AMIS vehicle matching
+├── ExcelExport.tsx          # Step 4: Final export
+└── QuickEmailInput.tsx      # Floating email input
+```
+
+#### **Testing the Claveteador Workflow**
+```bash
+# 1. Start the frontend
+npm run dev
+
+# 2. Open http://localhost:3000
+# 3. Test the complete workflow:
+
+# Step 1: Smart Intake Dashboard
+# - View processed email results
+# - Click "Process" on complete cases
+# - Use filters to find specific cases
+
+# Step 2: Claveteador (Data Preprocessing)
+# - Review email content and attachments
+# - Complete company information form
+# - Configure coverage requirements
+# - Review claims history
+# - Click "🔍 Claveteador" to proceed
+
+# Step 3: Vehicle Matching
+# - Review codification summary statistics
+# - Edit vehicle data inline
+# - Filter by AMIS status
+# - Click "✅ VALIDATE CLAVE AMIS"
+
+# Step 4: Excel Export
+# - Review final vehicle data
+# - Adjust agent discount percentage
+# - Click "📄 Download Excel Cotizador"
+```
+
+#### **Component Development**
+```bash
+# Hot reload is enabled for all components
+# Make changes to any .tsx file and see immediate updates
+
+# Key files for Claveteador workflow:
+# - NewDashboard.tsx: Main state management and navigation
+# - Each step component: Individual workflow steps
+# - Navigation between steps is handled by state changes
+
+# Test component isolation:
+cd ui
+npm run storybook  # If Storybook is configured
+```
+
 ## Service-by-Service Setup
 
 ### **Vehicle CVEGS Matcher Service**
