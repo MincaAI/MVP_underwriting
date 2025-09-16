@@ -33,13 +33,15 @@ vehicle-codifier/
 - **Clean Architecture**: Domain-driven design with strict separation of concerns
 - **AI-Powered**: OpenAI GPT models for intelligent attribute extraction
 - **High Accuracy**: Multi-stage matching with confidence scoring (85%+ success rate)
-- **Excel Integration**: Native support for Spanish Excel columns (Marca, Submarca, Año, etc.)
+- **CATVER Integration**: Full support for Mexican insurance CATVER format (14 columns)
+- **Structured Labels**: Uses fixed-order label format for consistent embeddings
 
 ### 📊 Processing Features
 - **Batch Processing**: Chunked parallel processing (configurable batch sizes)
-- **Semantic Search**: ML embeddings with pgvector for similarity matching
+- **Semantic Search**: 384-dimensional embeddings with pgvector (intfloat/multilingual-e5-small)
 - **Reranking**: Hybrid scoring (70% embeddings + 30% fuzzy matching)
 - **Decision Engine**: Three-tier decisions (auto_accept, needs_review, no_match)
+- **CATVER Compliance**: Works with structured labels containing all CATVER fields
 
 ## 🚀 Quick Start
 
@@ -75,21 +77,7 @@ poetry run uvicorn vehicle_codifier.main:app --host 0.0.0.0 --port 8002 --reload
 
 ## 📖 API Endpoints
 
-### Vehicle Matching API
-
-#### Single Vehicle Match
-```bash
-curl -X POST "http://localhost:8002/match" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "TOYOTA YARIS SOL L 2020",
-    "brand": "TOYOTA",
-    "model": "YARIS",
-    "year": 2020,
-    "insurer_id": "default"
-  }'
-```
-
+### Vehicle Matching API (Batch Only)
 #### Batch Vehicle Match
 ```bash
 curl -X POST "http://localhost:8002/match" \
@@ -152,15 +140,15 @@ T_HIGH = 0.90  # Auto-accept threshold
 T_LOW = 0.70   # Needs review threshold
 ```
 
-### Excel Column Mapping
+### CATVER Label Processing
 ```python
-# Supported Spanish Excel columns
-{
-    "Marca": "brand",           # High confidence (0.95)
-    "Submarca": "model",        # High confidence (0.95)
-    "Año MOdelos": "year",      # High confidence (0.95)
-    "Descripcion": "description" # Always required
-}
+# Structured label format used for matching
+label_format = """
+modelo=<year> | marca=<brand> | submarca=<model> | numver=<numver> | ramo=<ramo> | cvemarc=<cvemarc> | cvesubm=<cvesubm> | martip=<martip> | cvesegm=<segment> | descveh=<description> | idperdiod=<period> | sumabas=<sum> | tipveh=<vehicle_type>
+"""
+
+# Example structured label
+label_example = "modelo=2020 | marca=toyota | submarca=yaris | numver=2002 | ramo=711 | cvemarc=47 | cvesubm=1245 | martip=615 | cvesegm=compacto | descveh=yaris sol l 4 cilindros | idperdiod=202002 | sumabas=195000.0 | tipveh=auto"
 ```
 
 ## 🧪 Response Format
@@ -187,7 +175,7 @@ T_LOW = 0.70   # Needs review threshold
     {
       "cvegs": "1234567890",
       "score": 0.92,
-      "label": "toyota yaris 2020 hatchback particular"
+      "label": "modelo=2020 | marca=toyota | submarca=yaris | numver=2002 | ramo=711 | cvemarc=47 | cvesubm=1245 | martip=615 | cvesegm=compacto | descveh=yaris sol l 4 cilindros | idperdiod=202002 | sumabas=195000.0 | tipveh=auto"
     }
   ]
 }

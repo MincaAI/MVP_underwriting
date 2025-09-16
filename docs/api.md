@@ -580,6 +580,51 @@ Get processing status for email intake runs.
 
 ## Data Models
 
+### AMIS Catalog Schema (CATVER-Based)
+
+The `amis_catalog` table uses the full CATVER schema for Mexican insurance vehicle data:
+
+```sql
+CREATE TABLE amis_catalog (
+    id BIGSERIAL PRIMARY KEY,
+    catalog_version TEXT NOT NULL,
+
+    -- CATVER-specific columns (matching Excel structure)
+    marca VARCHAR(25) NOT NULL,           -- Brand
+    submarca VARCHAR(52) NOT NULL,        -- Sub-brand/Model
+    numver INTEGER NOT NULL,              -- Version number
+    ramo INTEGER NOT NULL,                -- Insurance branch
+    cvemarc INTEGER NOT NULL,             -- Brand code
+    cvesubm INTEGER NOT NULL,             -- Sub-brand code
+    martip INTEGER NOT NULL,              -- Brand type
+    cvesegm VARCHAR(51) NOT NULL,         -- Segment code
+    modelo INTEGER NOT NULL,              -- Year
+    cvegs INTEGER NOT NULL,               -- Unique vehicle code
+    descveh VARCHAR(150) NOT NULL,        -- Vehicle description
+    idperdiod INTEGER NOT NULL,           -- Period ID
+    sumabas FLOAT NOT NULL,               -- Base sum
+    tipveh VARCHAR(19) NOT NULL,          -- Vehicle type
+
+    -- Structured text representation
+    label TEXT,                           -- Fixed-order label for embeddings
+
+    -- ML and metadata columns
+    embedding VECTOR(384),                -- 384-dimensional embedding
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+**Structured Label Format:**
+```
+modelo=<year> | marca=<brand> | submarca=<model> | numver=<numver> | ramo=<ramo> | cvemarc=<cvemarc> | cvesubm=<cvesubm> | martip=<martip> | cvesegm=<segment> | descveh=<description> | idperdiod=<period> | sumabas=<sum> | tipveh=<vehicle_type>
+```
+
+**Example Label:**
+```
+modelo=2020 | marca=renault | submarca=zoe | numver=2002 | ramo=711 | cvemarc=37 | cvesubm=1344 | martip=615 | cvesegm=compacto | descveh=zoe bose 92 cp 5 puertas electrico | idperdiod=202002 | sumabas=382003.0 | tipveh=auto
+```
+
 ### Transform Input Format
 
 The transform engine expects broker Excel/CSV files with columns that map to canonical fields:
@@ -694,15 +739,23 @@ curl "http://localhost:8000/export/download?run_id=$RUN_ID"
 ### Testing with Sample Data
 
 ```bash
-# Load sample AMIS catalogue
-./tools/load_amis.py --file data/samples/amis_sample.xlsx
+# Load catalog with S3 + Postgres versioning workflow
+python tools/catalog_load.py \
+  --version "v1.0.0" \
+  --file "data/amis-catalogue/sample.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
 
-# Build embeddings
-./tools/build_embeddings.py --batch-size 32
+# Generate embeddings
+python tools/catalog_embed.py \
+  --version "v1.0.0" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --model-id "intfloat/multilingual-e5-small"
 
-# Test search functionality
-./tools/search_amis.py search "Honda Civic 2020 sedan"
+# Activate catalog version
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  activate --version "v1.0.0"
 
-# Evaluate codifier accuracy
+# Evaluate codifier accuracy (optional)
 ./tools/eval_codifier.py --file data/samples/labeled_100.csv
 ```

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 import argparse, pathlib, sys, json
 import pandas as pd
-from sqlalchemy import insert
+from sqlalchemy import text
 from app.db.session import engine
-from app.db.models import AmisCatalog
+# AmisCatalog model removed - using direct SQL for amis_catalog table
 
 def read_alias_yaml(path: pathlib.Path):
     try:
@@ -77,10 +77,13 @@ def main():
 
     with engine.begin() as cx:
         # optional: clean table first if desired
-        cx.execute(AmisCatalog.__table__.delete())
-        cx.execute(insert(AmisCatalog), rows)
+        cx.execute(text("DELETE FROM amis_catalog"))
+        cx.execute(text("""
+            INSERT INTO amis_catalog (cvegs, brand, model, year, body, use, description, aliases, embedding)
+            VALUES (:cvegs, :brand, :model, :year, :body, :use, :description, :aliases, :embedding)
+        """), rows)
 
-    print(f"Loaded {len(rows)} rows into amiscatalog.")
+    print(f"Loaded {len(rows)} rows into amis_catalog.")
 
 if __name__ == "__main__":
     main()

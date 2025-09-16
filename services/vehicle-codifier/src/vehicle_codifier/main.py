@@ -11,13 +11,11 @@ import structlog
 
 from .config.settings import get_settings
 from .models.vehicle import (
-    VehicleInput,
     MatchResult,
     BatchMatchRequest,
     BatchMatchResponse,
     HealthResponse
 )
-from typing import Union
 from .models.response import SuccessResponse, ErrorResponse, ValidationErrorResponse
 from .services.batch_processor import BatchProcessor
 from .services.matcher import CVEGSMatcher
@@ -78,8 +76,7 @@ async def lifespan(app: FastAPI):
         # Dataset file missing - continue startup so health/docs are available
         logger.error("Dataset file not found during initialization", error=str(e))
         logger.warning(
-            "Continuing startup without dataset. Set CVEGS_DATASET_PATH and POST /insurers/{insurer_id}/initialize after mounting dataset",
-            path=settings.cvegs_dataset_path
+            "Continuing startup without dataset. Load catalog data via S3 → Postgres first, then POST /insurers/{insurer_id}/initialize"
         )
     except Exception as e:
         logger.error("Failed to initialize service", error=str(e))
@@ -189,30 +186,16 @@ async def health_check():
         raise HTTPException(status_code=503, detail="Service unhealthy")
 
 
-# Unified vehicle matching endpoint - Clean Architecture
+"""Batch-only vehicle matching endpoint - Clean Architecture"""
 @app.post("/match", response_model=BatchMatchResponse, tags=["Matching"])
 async def match_vehicles(
-    request_data: Union[VehicleInput, BatchMatchRequest],
+    request_data: BatchMatchRequest,
     request: Request
 ):
     """
-    Unified endpoint for vehicle matching - handles both single vehicles and batches.
+    Batch vehicle matching.
 
-    **Supports Two Input Formats:**
-
-    **1. Single Vehicle:**
-    ```json
-    {
-        "description": "TOYOTA YARIS SOL L 2020",
-        "brand": "TOYOTA",
-        "model": "YARIS",
-        "year": 2020,
-        "insurer_id": "default"
-    }
-    ```
-
-    **2. Batch Request:**
-    ```json
+    Request body (BatchMatchRequest):
     {
         "vehicles": [
             {
@@ -225,57 +208,16 @@ async def match_vehicles(
         "insurer_id": "default",
         "parallel_processing": true
     }
-    ```
-
-    **Enhanced Input Support:**
-    - **description**: Vehicle description to match (from Excel Descripcion column)
-    - **brand**: Vehicle brand (from Excel Marca column) - high confidence
-    - **model**: Vehicle model (from Excel Submarka column) - high confidence
-    - **year**: Vehicle year (from Excel Ano MOdelos column) - high confidence
-    - **vin**: Vehicle VIN (from Excel SERIE column) - optional
-    - **coverage_package**: Coverage package (from Excel Paquete De Cobert column) - optional
-    - **insurer_id**: Insurer identifier for dataset selection
-    - **source_row**: Source Excel row number for tracking - optional
-
-    **Clean Architecture Processing:**
-    - Domain-driven design with clear separation of concerns
-    - Use cases orchestrate business logic
-    - Repository pattern for data access
-    - Dependency injection for testability
-    - Excel data takes precedence over LLM extraction
-    - Comprehensive confidence scoring with domain rules
-    - Always returns batch response format for consistency
     """
-    # Detect input type and process accordingly
-    if isinstance(request_data, VehicleInput):
-        # Single vehicle request - wrap in batch format
-        batch_request = BatchMatchRequest(
-            vehicles=[request_data],
-            insurer_id=request_data.insurer_id,
-            parallel_processing=True
+    # Validate batch request
+    validation_errors = clean_controller.validate_batch_request(request_data)
+    if validation_errors:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Validation failed: {'; '.join(validation_errors)}"
         )
 
-        # Validate single vehicle request
-        validation_errors = clean_controller.validate_single_vehicle_request(request_data)
-        if validation_errors:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Validation failed: {'; '.join(validation_errors)}"
-            )
-
-        # Process as batch with single item
-        return await clean_controller.match_batch_vehicles(batch_request)
-
-    elif isinstance(request_data, BatchMatchRequest):
-        # Batch request - process directly
-        validation_errors = clean_controller.validate_batch_request(request_data)
-        if validation_errors:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Validation failed: {'; '.join(validation_errors)}"
-            )
-
-        return await clean_controller.match_batch_vehicles(request_data)
+    return await clean_controller.match_batch_vehicles(request_data)
 
     else:
         raise HTTPException(

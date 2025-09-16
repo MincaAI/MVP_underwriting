@@ -12,8 +12,10 @@ from .models import (
     Row,
     Codify,
     Correction,
-    # AMIS catalog
-    AmisRecord,
+    # Catalog tables
+    AmisCatalog,
+    CatalogImport,
+    AppSettings,
     # Enums
     CaseStatus,
     Component,
@@ -28,14 +30,16 @@ __all__ = [
     "Base",
     # Models
     "Case",
-    "Run", 
+    "Run",
     "Row",
     "Codify",
     "Correction",
-    "AmisRecord",
+    "AmisCatalog",
+    "CatalogImport",
+    "AppSettings",
     # Enums
     "CaseStatus",
-    "Component", 
+    "Component",
     "RunStatus",
     # Session
     "get_session",

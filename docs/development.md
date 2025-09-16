@@ -37,13 +37,30 @@
    poetry run alembic upgrade head
    ```
 
-5. **Load Sample Data**
+5. **Load CATVER Catalog Data (S3 + Postgres Workflow)**
    ```bash
-   # Load AMIS vehicle catalogue
-   ./tools/load_amis.py --file data/samples/amis_sample.xlsx
-   
-   # Build ML embeddings
-   ./tools/build_embeddings.py --batch-size 32
+   # Option A: Load from S3 URI (recommended for production)
+   python tools/catalog_load.py \
+     --version "dev-v1.0" \
+     --s3-uri "s3://raw/catalogs/CATVER_ENVIOS.xlsx" \
+     --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+
+   # Option B: Load from local CATVER file (development)
+   python tools/catalog_load.py \
+     --version "dev-v1.0" \
+     --file "data/amis-catalogue/CATVER_ENVIOS.xlsx" \
+     --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+
+   # Generate embeddings for the catalog version (uses structured labels)
+   python tools/catalog_embed.py \
+     --version "dev-v1.0" \
+     --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+     --model-id "intfloat/multilingual-e5-small"
+
+   # Activate the catalog version
+   python tools/catalog_activate.py \
+     --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+     activate --version "dev-v1.0"
    ```
 
 ## Project Structure
@@ -116,6 +133,17 @@ curl http://localhost:8000/health
 
 ### 3. Database Changes
 
+**AMIS Catalog Schema Evolution:**
+
+The project has evolved from a simple catalog structure to a full CATVER-compliant schema:
+
+1. **Initial Schema** (`amis_catalog`): Basic brand/model/year structure
+2. **Current Schema** (`amis_catalog`): Full CATVER schema with 14 columns + structured labels + embeddings
+
+Key migrations:
+- `004_update_amis_catalog_catver_schema.py`: Complete schema redesign
+- `007_add_label_column_to_amis_catalog.py`: Added structured label support
+
 ```bash
 cd packages/db
 
@@ -166,14 +194,8 @@ curl -X POST "http://localhost:8000/export?run_id=uuid"
 ### Performance Testing
 
 ```bash
-# Evaluate codifier accuracy
+# Evaluate codifier accuracy (optional)
 ./tools/eval_codifier.py --file data/samples/labeled_100.csv
-
-# Benchmark embedding generation
-./tools/build_embeddings.py --batch-size 64 --limit 1000
-
-# Test search performance
-./tools/search_amis.py search "Honda Civic 2020" --k 50
 ```
 
 ## Common Tasks
@@ -214,7 +236,11 @@ curl -X POST "http://localhost:8000/export?run_id=uuid"
 
 2. **Rebuild Embeddings** (if needed)
    ```bash
-   ./tools/build_embeddings.py --force-rebuild
+   # Rebuild embeddings for active catalog version
+   python tools/catalog_embed.py \
+     --version "dev-v1.0" \
+     --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+     --model-id "intfloat/multilingual-e5-small"
    ```
 
 ### Adding Export Fields
@@ -247,8 +273,13 @@ docker exec -it mvp_db psql -U minca -d minca
 # Query runs
 SELECT * FROM runs ORDER BY created_at DESC LIMIT 10;
 
-# Check embeddings
-SELECT COUNT(*) FROM amiscatalog WHERE embedding IS NOT NULL;
+# Check loaded CATVER catalog data
+SELECT catalog_version, COUNT(*) FROM amis_catalog GROUP BY catalog_version;
+SELECT * FROM catalog_import ORDER BY created_at DESC;
+
+# Check embedding status
+SELECT COUNT(*) as total, COUNT(embedding) as with_embeddings
+FROM amis_catalog WHERE catalog_version = 'dev-v1.0';
 ```
 
 ### Log Analysis
@@ -272,8 +303,7 @@ result = embedder.embed_vehicle('Honda', 'Civic', 2020)
 print(f'Embedding shape: {result.shape}')
 "
 
-# Test search
-./tools/search_amis.py search "Honda Civic" --output-mode content -n
+# (Search utilities are project-specific and optional.)
 ```
 
 ## Performance Guidelines
@@ -348,10 +378,10 @@ curl http://localhost:8000/health
    poetry install  # Reinstall dependencies
    ```
 
-3. **"Embedding dimension mismatch"**
-   ```bash
-   ./tools/build_embeddings.py --force-rebuild
-   ```
+3. **Data not visible in DB UI**
+   - Verify catalog data is in `amis_catalog` table with proper `catalog_version`
+   - Check catalog status: `python tools/catalog_activate.py --db $DATABASE_URL list`
+   - Re-run catalog load and embed if needed
 
 4. **"S3 connection failed"**
    - Check MinIO is running: `docker ps`

@@ -1,18 +1,19 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os
+from pathlib import Path
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+psycopg://minca:minca@localhost:5432/minca"
+    database_url: str
     
     # S3/Storage
-    s3_endpoint_url: str = "http://localhost:9000"
+    s3_endpoint_url: str
     s3_bucket_raw: str = "raw"
     s3_bucket_exports: str = "exports"
     s3_region: str = "us-east-1"
-    aws_access_key_id: str = "minio"
-    aws_secret_access_key: str = "minio12345"
+    aws_access_key_id: str
+    aws_secret_access_key: str
     
     # SQS
     extractor_queue: str = "mincaai-extractor"
@@ -28,9 +29,39 @@ class Settings(BaseSettings):
     # ML
     auto_accept_threshold: float = 0.85
     review_threshold: float = 0.70
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # Embedding Configuration
+    embedding_model: str
+    embedding_dimension: int
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-2-v2"
-    
+
+    # Matching Thresholds
+    similarity_threshold: float
+    fuzzy_match_threshold: float
+
+    # Blend Weights
+    w_embed: float
+    w_fuzzy: float
+
+    # OpenAI Configuration
+    openai_api_key: str
+    openai_model: str = "gpt-4o-mini"
+    openai_max_tokens: int = 1000
+    openai_temperature: float = 0.1
+
+    # Service Configuration
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    vehicle_codifier_host: str = "0.0.0.0"
+    vehicle_codifier_port: int = 8002
+    smart_intake_host: str = "0.0.0.0"
+    smart_intake_port: int = 8003
+
+    # Azure Configuration
+    azure_tenant_id: Optional[str] = None
+    azure_client_id: Optional[str] = None
+    azure_client_secret: Optional[str] = None
+
     # Auth
     jwt_secret: str = "dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
@@ -47,7 +78,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     
     class Config:
-        env_file = ".env"
+        # Find project root and construct path to env file
+        project_root = Path(__file__).parent.parent.parent.parent.parent.parent
+        env_file = project_root / "configs" / "env" / ".env.development"
         case_sensitive = False
 
 # Global settings instance

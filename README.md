@@ -89,15 +89,8 @@ docker compose up -d vehicle-codifier
 curl -s http://localhost:8002/health
 ```
 Notes:
-- By default the service looks for an Excel dataset at data/cvegs_dataset.xlsx inside the container. If you have a dataset on your host, mount it and/or set CVEGS_DATASET_PATH. Example:
-  ```yaml
-  # In docker-compose.yml (vehicle-codifier service)
-  environment:
-    - CVEGS_DATASET_PATH=/app/services/vehicle-codifier/data/cvegs_dataset.xlsx
-  volumes:
-    - ./data/cvegs_dataset.xlsx:/app/services/vehicle-codifier/data/cvegs_dataset.xlsx:ro
-  ```
-- The service starts even without a dataset (health/docs available). Initialize later after mounting a dataset: POST /insurers/default/initialize.
+- The service uses S3 + Postgres for vehicle catalog data. Upload Excel files to S3, then load into database with catalog versioning.
+- No local dataset files needed - all data flows through S3 → Postgres → Embeddings.
 
 Frontend UI (Next.js at http://localhost:3000)
 ```bash
@@ -157,14 +150,33 @@ poetry run alembic upgrade head
 cd ../..
 ```
 
-### Step 4: Load Sample Data & Build Embeddings
+### Step 4: Load Catalog Data & Build Embeddings
+
+The system uses S3 + Postgres for vehicle catalog management with versioning:
 
 ```bash
-# Load AMIS vehicle catalogue (sample data)
-./tools/load_amis.py --file data/amis_sample.xlsx
+# Method 1: Load from S3 URI (recommended)
+python tools/catalog_load.py \
+  --version "v1.0.0" \
+  --s3-uri "s3://raw/catalogs/amis_sample.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
 
-# Build ML embeddings for semantic search
-./tools/build_embeddings.py --batch-size 32
+# Method 2: Load from local file (development)
+python tools/catalog_load.py \
+  --version "v1.0.0" \
+  --file "data/amis_sample.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+
+# Generate embeddings for the catalog version
+python tools/catalog_embed.py \
+  --version "v1.0.0" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --model-id "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+# Activate the catalog version
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  activate --version "v1.0.0"
 ```
 
 ### Step 5: Test the System
@@ -173,11 +185,14 @@ cd ../..
 # Health check
 curl http://localhost:8000/health
 
-# Test codifier with sample data
-./tools/eval_codifier.py --file data/samples/labeled_100.csv
+# List catalog versions
+python tools/catalog_activate.py --db "postgresql+psycopg://minca:minca@localhost:5432/minca" list
 
-# Search for vehicles
+# Search for vehicles (requires active catalog version)
 ./tools/search_amis.py "Toyota Corolla 2020"
+
+# Test codifier with sample data (if available)
+./tools/eval_codifier.py --file data/samples/labeled_100.csv
 ```
 
 ### Development URLs
@@ -309,9 +324,10 @@ Excel/CSV → Extract → Transform → Codify → Export → Download
 - **Async Processing**: Background task processing with real-time status tracking
 
 ✅ **AMIS Catalogue System**
-- Vehicle database loading with aliases
-- Multilingual text normalization  
-- Semantic embeddings with pgvector
+- S3-based catalog versioning with immutable storage
+- Automated ETL: S3 → Postgres → Embeddings → Activation
+- Multilingual text normalization with 384-dimensional embeddings
+- pgvector ANN indexes for fast semantic search
 - Top-K similarity search with fallback strategies
 
 ✅ **Vehicle Codification**
@@ -330,9 +346,9 @@ Excel/CSV → Extract → Transform → Codify → Export → Download
 **Frontend**: Next.js 15, React 18, TypeScript, Tailwind CSS  
 **Backend**: Python 3.11, FastAPI, SQLAlchemy 2.0, Alembic  
 **Dependency Management**: Poetry workspace mode, npm  
-**Database**: PostgreSQL + pgvector extension  
-**Storage**: MinIO (dev) / S3 (prod)  
-**ML**: sentence-transformers, rapidfuzz, pandas, numpy  
+**Database**: PostgreSQL + pgvector extension with 384-dim vectors
+**Storage**: S3/MinIO with immutable catalog versioning
+**ML**: sentence-transformers (multilingual), rapidfuzz, pgvector ANN search  
 **Excel Processing**: openpyxl with professional formatting  
 **Infrastructure**: Docker Compose (dev) / AWS ECS (future)  
 **Text Processing**: Unicode normalization + abbreviation expansion

@@ -109,7 +109,7 @@ configs/env/
 
 #### Vehicle Codifier (`configs/env/service-specific/.env.vehicle-codifier`)
 - `OPENAI_API_KEY`: OpenAI API key for embeddings
-- `CVEGS_DATASET_PATH`: Path to vehicle dataset
+- Vehicle catalog data managed via S3 + Postgres (no local dataset paths)
 - `CONFIDENCE_THRESHOLD_*`: ML confidence thresholds
 - `EMBEDDING_MODEL`: ML model configuration
 

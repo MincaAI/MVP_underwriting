@@ -13,7 +13,7 @@ This guide provides step-by-step instructions for setting up the Minca AI Insura
 - **Git**: Version control
 
 ### **Required Data**
-- **AMIS Vehicle Catalogue**: Excel file with CVEGS vehicle data
+- **Vehicle Catalogue Excel** (e.g., CATVER_ENVIOS.xlsx)
 - **Sample Broker Files**: Excel/CSV files for testing transformations
 
 ## Setup Instructions
@@ -42,13 +42,39 @@ poetry install
 poetry run alembic upgrade head
 ```
 
-### **4. Load AMIS Data**
+### **4. Load Catalog Data (S3 + Postgres Versioning)**
 ```bash
-# Place your AMIS file in data/
-./tools/load_amis.py --file data/amis_sample.xlsx
+# Load catalog with versioning
+python tools/catalog_load.py \
+  --version "dev-v1.0" \
+  --file "data/amis-catalogue/sample.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
 
-# Build ML embeddings for search
-./tools/build_embeddings.py --batch-size 32
+# Generate embeddings
+python tools/catalog_embed.py \
+  --version "dev-v1.0" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --model-id "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+# Activate catalog version
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  activate --version "dev-v1.0"
+
+# Verify counts (optional)
+python - <<'PY'
+import sys
+sys.path.insert(0, 'packages/db/src')
+from sqlalchemy import text
+from app.db.session import engine
+with engine.begin() as cx:
+    for t in ['sample_raw','catver_envios_raw']:
+        try:
+            c = cx.execute(text(f'SELECT COUNT(*) FROM "{t}"')).scalar()
+            print(t, c)
+        except Exception:
+            pass
+PY
 ```
 
 ### **5. Start API Service**
@@ -108,16 +134,10 @@ curl -X POST "http://localhost:8000/export?run_id=<uuid>"
 curl "http://localhost:8000/export/download?run_id=<uuid>"
 ```
 
-### **3. Test ML Components**
+### **3. Test Utilities**
 ```bash
-# Search AMIS catalogue
-./tools/search_amis.py search "Honda Civic 2020 sedan"
-
-# Evaluate codifier accuracy
+# Evaluate codifier accuracy (optional)
 ./tools/eval_codifier.py --file data/samples/labeled_100.csv
-
-# Test embeddings generation
-./tools/build_embeddings.py --batch-size 16 --limit 100
 ```
 
 ## Complete Platform Setup

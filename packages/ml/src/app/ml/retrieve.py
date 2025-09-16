@@ -10,7 +10,7 @@ import pathlib
 # Add packages to path for imports
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent / "packages" / "db" / "src"))
 
-from app.db.models import AmisCatalog
+# AmisCatalog model removed - using raw SQL queries for amis_catalog table
 from .embed import VehicleEmbedder, get_embedder
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,8 @@ class VehicleRetriever:
         try:
             # Create HNSW index for cosine distance
             index_sql = """
-            CREATE INDEX IF NOT EXISTS amiscatalog_embedding_cosine_idx 
-            ON amiscatalog USING hnsw (embedding vector_cosine_ops)
+            CREATE INDEX IF NOT EXISTS amis_catalog_embedding_cosine_idx
+            ON amis_catalog USING hnsw (embedding vector_cosine_ops)
             WITH (m = 16, ef_construction = 64)
             """
             session.execute(text(index_sql))
@@ -108,7 +108,7 @@ class VehicleRetriever:
             sql_parts = [
                 "SELECT *,",
                 f"1 - (embedding <=> '{embedding_str}'::vector) as similarity",
-                "FROM amiscatalog",
+                "FROM amis_catalog",
                 "WHERE embedding IS NOT NULL"
             ]
             
@@ -190,7 +190,7 @@ class VehicleRetriever:
         """
         with self.engine.begin() as conn:
             # Build query for exact matches
-            sql_parts = ["SELECT * FROM amiscatalog WHERE brand = :brand AND model = :model"]
+            sql_parts = ["SELECT * FROM amis_catalog WHERE brand = :brand AND model = :model"]
             params = {"brand": brand.lower().strip(), "model": model.lower().strip()}
             
             if year:
@@ -304,7 +304,7 @@ class VehicleRetriever:
         """
         with self.engine.begin() as conn:
             result = conn.execute(
-                text("SELECT * FROM amiscatalog WHERE cvegs = :cvegs"),
+                text("SELECT * FROM amis_catalog WHERE cvegs = :cvegs"),
                 {"cvegs": cvegs}
             )
             row = result.fetchone()
@@ -335,17 +335,17 @@ class VehicleRetriever:
             stats = {}
             
             # Total vehicles
-            result = conn.execute(text("SELECT COUNT(*) as total FROM amiscatalog"))
+            result = conn.execute(text("SELECT COUNT(*) as total FROM amis_catalog"))
             stats["total_vehicles"] = result.fetchone()[0]
             
             # Vehicles with embeddings
-            result = conn.execute(text("SELECT COUNT(*) as with_embeddings FROM amiscatalog WHERE embedding IS NOT NULL"))
+            result = conn.execute(text("SELECT COUNT(*) as with_embeddings FROM amis_catalog WHERE embedding IS NOT NULL"))
             stats["vehicles_with_embeddings"] = result.fetchone()[0]
             
             # Brand distribution
             result = conn.execute(text("""
                 SELECT brand, COUNT(*) as count 
-                FROM amiscatalog 
+                FROM amis_catalog 
                 WHERE brand IS NOT NULL 
                 GROUP BY brand 
                 ORDER BY count DESC 
@@ -356,7 +356,7 @@ class VehicleRetriever:
             # Year distribution
             result = conn.execute(text("""
                 SELECT year, COUNT(*) as count 
-                FROM amiscatalog 
+                FROM amis_catalog 
                 WHERE year IS NOT NULL 
                 GROUP BY year 
                 ORDER BY year DESC 

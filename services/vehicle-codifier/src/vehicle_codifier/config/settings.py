@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import Optional, Dict, Any
 import os
+from app.common.config import get_settings as get_shared_settings
 
 
 class Settings(BaseSettings):
@@ -24,16 +25,14 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     redis_cache_ttl: int = 3600  # 1 hour
     
-    # Data Configuration
-    cvegs_dataset_path: str = "data/cvegs_dataset.xlsx"
+    # Data Configuration - using S3 + Postgres only (no local dataset paths)
     
     # Processing Configuration
     max_batch_size: int = 200
     max_concurrent_requests: int = 50
     request_timeout: int = 30
     
-    # Matching Configuration
-    confidence_threshold: float = 0.8
+    # Service-specific Matching Configuration (inherits from shared config)
     max_candidates: int = 10
     
     # Logging Configuration
@@ -52,10 +51,10 @@ class Settings(BaseSettings):
 
 class InsurerConfig(BaseSettings):
     """Configuration for a specific insurer."""
-    
+
     insurer_id: str
     insurer_name: str
-    dataset_path: str
+    # Using catalog version from amis_catalog table instead of local dataset_path
     
     # Column mapping for Spanish Excel headers
     column_mapping: Dict[str, str] = {
@@ -66,8 +65,7 @@ class InsurerConfig(BaseSettings):
         "CVEGS": "cvegs_code"
     }
     
-    # Business rules
-    confidence_threshold: float = 0.8
+    # Business rules (use shared config for thresholds)
     max_candidates: int = 10
     
     # Year code mapping (if needed)
@@ -88,24 +86,34 @@ settings = Settings()
 
 def get_insurer_config(insurer_id: str) -> InsurerConfig:
     """Get configuration for a specific insurer."""
-    
+
     # Default configuration
     if insurer_id == "default":
         return InsurerConfig(
             insurer_id="default",
-            insurer_name="Default Insurer",
-            dataset_path=settings.cvegs_dataset_path
+            insurer_name="Default Insurer"
         )
-    
-    # Load from file or database in the future
-    # For now, return default
+
+    # Load from database - all insurers use the same amis_catalog table with versions
     return InsurerConfig(
         insurer_id=insurer_id,
-        insurer_name=f"Insurer {insurer_id}",
-        dataset_path=f"data/{insurer_id}_cvegs_dataset.xlsx"
+        insurer_name=f"Insurer {insurer_id}"
     )
 
 
 def get_settings() -> Settings:
     """Get application settings."""
     return settings
+
+
+def get_embedding_config():
+    """Get embedding configuration from shared settings."""
+    shared = get_shared_settings()
+    return {
+        'model': shared.embedding_model,
+        'dimension': shared.embedding_dimension,
+        'similarity_threshold': shared.similarity_threshold,
+        'fuzzy_match_threshold': shared.fuzzy_match_threshold,
+        'w_embed': shared.w_embed,
+        'w_fuzzy': shared.w_fuzzy
+    }

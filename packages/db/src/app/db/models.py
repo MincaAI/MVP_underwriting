@@ -141,24 +141,57 @@ class EmailAttachment(Base):
     
     email_message: Mapped["EmailMessage"] = relationship(back_populates="attachments")
 
-# --- AMIS catalog tables ---
-class AmisRecord(Base):
-    __tablename__ = "amis_record"
-    
+# --- catalog tables ---
+class AmisCatalog(Base):
+    __tablename__ = "amis_catalog"
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cvegs: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
-    brand: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    model: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    body_type: Mapped[str] = mapped_column(String, nullable=True, index=True)
-    use_type: Mapped[str] = mapped_column(String, nullable=True, index=True)
-    description: Mapped[str] = mapped_column(String, nullable=False)
-    embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=True)  # For semantic search
+    catalog_version: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+    # CATVER-specific columns (matching Excel structure)
+    marca: Mapped[str] = mapped_column(String(25), nullable=False, index=True)  # Brand
+    submarca: Mapped[str] = mapped_column(String(52), nullable=False, index=True)  # Sub-brand/Model
+    numver: Mapped[int] = mapped_column(Integer, nullable=False)  # Version number
+    ramo: Mapped[int] = mapped_column(Integer, nullable=False)  # Insurance branch
+    cvemarc: Mapped[int] = mapped_column(Integer, nullable=False)  # Brand code
+    cvesubm: Mapped[int] = mapped_column(Integer, nullable=False)  # Sub-brand code
+    martip: Mapped[int] = mapped_column(Integer, nullable=False)  # Brand type
+    cvesegm: Mapped[str] = mapped_column(String(51), nullable=False)  # Segment code
+    modelo: Mapped[int] = mapped_column(Integer, nullable=False, index=True)  # Year
+    cvegs: Mapped[int] = mapped_column(Integer, nullable=False, index=True)  # Unique vehicle code
+    descveh: Mapped[str] = mapped_column(String(150), nullable=False, index=True)  # Vehicle description
+    idperdiod: Mapped[int] = mapped_column(Integer, nullable=False)  # Period ID
+    sumabas: Mapped[float] = mapped_column(Float, nullable=False)  # Base sum
+    tipveh: Mapped[str] = mapped_column(String(19), nullable=False, index=True)  # Vehicle type
+
+    # Structured text representation
+    label: Mapped[str] = mapped_column(Text, nullable=True, index=True)  # Structured label for embeddings
+
+    # ML and metadata columns
+    embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-Index("ix_amis_brand_model_year", AmisRecord.brand, AmisRecord.model, AmisRecord.year)
-Index("ix_amis_description", AmisRecord.description)
+    __table_args__ = (
+        Index("ix_amis_catalog_version_brand_year", "catalog_version", "marca", "modelo"),
+        Index("ix_amis_catalog_description", "descveh"),
+        Index("ix_amis_catalog_tipveh", "tipveh"),
+        Index("ix_amis_catalog_cvegs", "cvegs"),  # Index for fast lookups but no uniqueness
+    )
 
-# Backward compatibility alias for older imports
-AmisCatalog = AmisRecord
+class CatalogImport(Base):
+    __tablename__ = "catalog_import"
+
+    version: Mapped[str] = mapped_column(String, primary_key=True)
+    s3_uri: Mapped[str] = mapped_column(String, nullable=False)
+    sha256: Mapped[str] = mapped_column(String, nullable=False)
+    rows_loaded: Mapped[int] = mapped_column(Integer, nullable=True)
+    model_id: Mapped[str] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)  # UPLOADED, LOADED, EMBEDDED, ACTIVE, FAILED
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class AppSettings(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, nullable=False)

@@ -2,7 +2,7 @@
 """
 Build embeddings for AMIS catalogue entries.
 
-This script processes the amiscatalog table and generates embeddings for all entries
+This script processes the amis_catalog table and generates embeddings for all entries
 using the VehicleEmbedder. It can process entries in batches and update existing embeddings.
 """
 
@@ -19,7 +19,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "packages" / "ml" 
 from sqlalchemy import text, update
 from sqlalchemy.orm import sessionmaker
 from app.db.session import engine
-from app.db.models import AmisCatalog
+# Using raw SQL queries - AmisCatalog model removed
 from app.ml.embed import get_embedder
 from app.ml.retrieve import VehicleRetriever
 
@@ -30,18 +30,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_vehicles_without_embeddings(session, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Get vehicles that don't have embeddings yet."""
+def get_vehicles_without_embeddings(session, catalog_version: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Get vehicles that don't have embeddings yet for a specific catalog version."""
     query = """
-    SELECT id, cvegs, brand, model, year, body, use, description, aliases
-    FROM amiscatalog 
-    WHERE embedding IS NULL
+    SELECT id, cvegs, brand, model, year, body, use, label, aliases
+    FROM amis_catalog
+    WHERE catalog_version = :version AND embedding IS NULL
     """
     
     if limit:
         query += f" LIMIT {limit}"
-    
-    result = session.execute(text(query))
+
+    result = session.execute(text(query), {"version": catalog_version})
     
     vehicles = []
     for row in result.fetchall():
@@ -80,7 +80,7 @@ def update_embeddings(session, vehicle_embeddings: List[tuple]) -> None:
         if update_data:
             session.execute(
                 text("""
-                UPDATE amiscatalog 
+                UPDATE amis_catalog 
                 SET embedding = :embedding::vector 
                 WHERE id = :id
                 """),
@@ -94,14 +94,16 @@ def update_embeddings(session, vehicle_embeddings: List[tuple]) -> None:
         session.rollback()
         raise
 
-def build_embeddings(batch_size: int = 32, 
+def build_embeddings(catalog_version: str,
+                    batch_size: int = 32,
                     limit: Optional[int] = None,
                     force_rebuild: bool = False,
                     create_index: bool = True) -> None:
     """
-    Build embeddings for vehicles in the catalogue.
-    
+    Build embeddings for vehicles in the specified catalog version.
+
     Args:
+        catalog_version: Catalog version to process
         batch_size: Number of vehicles to process in each batch
         limit: Maximum number of vehicles to process (None for all)
         force_rebuild: If True, rebuild embeddings for all vehicles
@@ -116,13 +118,13 @@ def build_embeddings(batch_size: int = 32,
     session = Session()
     
     try:
-        # Get total count
+        # Get total count for this catalog version
         if force_rebuild:
-            count_query = "SELECT COUNT(*) FROM amiscatalog"
+            count_query = "SELECT COUNT(*) FROM amis_catalog WHERE catalog_version = :version"
         else:
-            count_query = "SELECT COUNT(*) FROM amiscatalog WHERE embedding IS NULL"
-        
-        total_result = session.execute(text(count_query))
+            count_query = "SELECT COUNT(*) FROM amis_catalog WHERE catalog_version = :version AND embedding IS NULL"
+
+        total_result = session.execute(text(count_query), {"version": catalog_version})
         total_count = total_result.fetchone()[0]
         
         if total_count == 0:
@@ -136,22 +138,24 @@ def build_embeddings(batch_size: int = 32,
             # Get batch of vehicles
             if force_rebuild:
                 query = """
-                SELECT id, cvegs, brand, model, year, body, use, description, aliases
-                FROM amiscatalog 
+                SELECT id, cvegs, brand, model, year, body, use, label, aliases
+                FROM amis_catalog
+                WHERE catalog_version = :version
                 ORDER BY id
                 LIMIT :limit OFFSET :offset
                 """
                 result = session.execute(text(query), {
+                    "version": catalog_version,
                     "limit": batch_size,
                     "offset": processed
                 })
             else:
-                vehicles = get_vehicles_without_embeddings(session, batch_size)
+                vehicles = get_vehicles_without_embeddings(session, catalog_version, batch_size)
                 if not vehicles:
                     break
-                
+
                 # Convert to result format for consistency
-                result = [(v["id"], v["cvegs"], v["brand"], v["model"], v["year"], 
+                result = [(v["id"], v["cvegs"], v["brand"], v["model"], v["year"],
                           v["body"], v["use"], v["description"], v["aliases"]) for v in vehicles]
             
             if force_rebuild:
@@ -213,7 +217,9 @@ def build_embeddings(batch_size: int = 32,
 
 def main():
     parser = argparse.ArgumentParser(description="Build embeddings for AMIS catalogue")
-    parser.add_argument("--batch-size", type=int, default=32, 
+    parser.add_argument("--version", required=True,
+                       help="Catalog version to process")
+    parser.add_argument("--batch-size", type=int, default=32,
                        help="Batch size for processing (default: 32)")
     parser.add_argument("--limit", type=int, default=None,
                        help="Maximum number of vehicles to process")
@@ -223,17 +229,18 @@ def main():
                        help="Skip creating pgvector index")
     parser.add_argument("--model", type=str, default=None,
                        help="Sentence transformer model name to use")
-    
+
     args = parser.parse_args()
-    
+
     # Initialize embedder with custom model if specified
     if args.model:
         from app.ml.embed import VehicleEmbedder
         global _global_embedder
         _global_embedder = VehicleEmbedder(args.model)
-    
+
     try:
         build_embeddings(
+            catalog_version=args.version,
             batch_size=args.batch_size,
             limit=args.limit,
             force_rebuild=args.force_rebuild,
