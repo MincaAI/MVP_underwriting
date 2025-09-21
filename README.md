@@ -23,8 +23,10 @@ MVP_underwriting/
 │  ├─ gcotiza-templates/   # Export format specifications
 │  └─ aliases/             # Vehicle normalization dictionaries
 ├─ tools/                  # CLI Utilities
-│  ├─ load_amis.py         # AMIS catalogue data loader
-│  ├─ build_embeddings.py  # ML embedding index builder
+│  ├─ catalog_load.py      # AMIS catalogue data loader (S3 + Postgres)
+│  ├─ catalog_embed.py     # ML embedding index builder
+│  ├─ catalog_activate.py  # Catalog version management
+│  ├─ delete_amis_data.py  # AMIS data deletion utility
 │  ├─ search_amis.py       # Semantic vehicle search
 │  └─ eval_codifier.py     # Accuracy evaluation framework
 ├─ data/                   # Sample Data
@@ -171,7 +173,7 @@ python tools/catalog_load.py \
 python tools/catalog_embed.py \
   --version "v1.0.0" \
   --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
-  --model-id "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  --model-id "intfloat/multilingual-e5-large"
 
 # Activate the catalog version
 python tools/catalog_activate.py \
@@ -348,7 +350,7 @@ Excel/CSV → Extract → Transform → Codify → Export → Download
 **Dependency Management**: Poetry workspace mode, npm  
 **Database**: PostgreSQL + pgvector extension with 384-dim vectors
 **Storage**: S3/MinIO with immutable catalog versioning
-**ML**: sentence-transformers (multilingual), rapidfuzz, pgvector ANN search  
+**ML**: sentence-transformers (intfloat/multilingual-e5-large), rapidfuzz, pgvector ANN search  
 **Excel Processing**: openpyxl with professional formatting  
 **Infrastructure**: Docker Compose (dev) / AWS ECS (future)  
 **Text Processing**: Unicode normalization + abbreviation expansion

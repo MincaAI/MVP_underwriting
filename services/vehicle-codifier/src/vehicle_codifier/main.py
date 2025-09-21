@@ -1,301 +1,284 @@
-import uuid
+"""Simplified FastAPI application for vehicle codification."""
+
 import time
-from datetime import datetime
 from typing import Optional
-from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import structlog
+import uuid
+import sys
+import pathlib
 
-from .config.settings import get_settings
-from .models.vehicle import (
-    MatchResult,
-    BatchMatchRequest,
-    BatchMatchResponse,
-    HealthResponse
+from .config import get_settings
+from .models import (
+    VehicleInput, FlexibleMatchRequest, FlexibleMatchResponse, HealthResponse
 )
-from .models.response import SuccessResponse, ErrorResponse, ValidationErrorResponse
-from .services.batch_processor import BatchProcessor
-from .services.matcher import CVEGSMatcher
-from .services.data_loader import DataLoader
+from .service import VehicleCodeifier
+from .preprocessor import VehiclePreprocessor
 
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
+# Add packages to path for database access (optional - commented out for simplified service)
+# sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent / "packages" / "db" / "src"))
+# from app.db.session import engine
+# from app.db.models import Run, Row, Codify, Component, RunStatus
+# from sqlalchemy.orm import Session
 
-logger = structlog.get_logger()
+# Database dependencies - only import if available
+try:
+    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent / "packages" / "db" / "src"))
+    from app.db.session import engine
+    from app.db.models import Run, Row, Codify, Component, RunStatus
+    from sqlalchemy.orm import Session
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+    print("⚠️  Database modules not available - batch processing endpoint disabled")
 
-# Global instances - legacy services
-batch_processor = BatchProcessor()
-matcher = CVEGSMatcher()
-data_loader = DataLoader()
+# Initialize settings and services
 settings = get_settings()
-
-# Clean architecture controller
-from .presentation.controllers.vehicle_matching_controller import VehicleMatchingController
-from .infrastructure.di_container import get_container
-
-# Initialize clean architecture
-clean_controller = VehicleMatchingController()
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager with clean architecture initialization."""
-    # Startup
-    logger.info("Starting Vehicle CVEGS Matcher service with Clean Architecture", 
-               version=settings.app_version)
-    
-    try:
-        # Initialize legacy services for backward compatibility
-        await matcher.initialize_insurer("default")
-        
-        # Warm up clean architecture services
-        container = get_container()
-        container.warm_up()
-        
-        logger.info("Service initialized successfully with Clean Architecture enabled")
-    except FileNotFoundError as e:
-        # Dataset file missing - continue startup so health/docs are available
-        logger.error("Dataset file not found during initialization", error=str(e))
-        logger.warning(
-            "Continuing startup without dataset. Load catalog data via S3 → Postgres first, then POST /insurers/{insurer_id}/initialize"
-        )
-    except Exception as e:
-        logger.error("Failed to initialize service", error=str(e))
-        raise
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down Vehicle CVEGS Matcher service")
-
+codifier = VehicleCodeifier()
+preprocessor = VehiclePreprocessor()
 
 # Create FastAPI app
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="High-accuracy vehicle description to CVEGS code matching service",
-    lifespan=lifespan,
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None
+    description="Simplified vehicle description to CVEGS code matching using pgvector similarity"
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Request ID middleware
-@app.middleware("http")
-async def add_request_id(request: Request, call_next):
-    """Add unique request ID to each request."""
-    request_id = str(uuid.uuid4())
-    request.state.request_id = request_id
-    
-    # Add to structured logging context
-    structlog.contextvars.clear_contextvars()
-    structlog.contextvars.bind_contextvars(request_id=request_id)
-    
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    
-    response.headers["X-Request-ID"] = request_id
-    response.headers["X-Process-Time"] = str(process_time)
-    
-    return response
-
-
-# Exception handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handle HTTP exceptions."""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=ErrorResponse(
-            message=exc.detail,
-            error_code=f"HTTP_{exc.status_code}",
-            request_id=getattr(request.state, 'request_id', None)
-        ).dict()
-    )
-
-
-@app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    """Handle general exceptions."""
-    logger.error("Unhandled exception", error=str(exc), exc_info=True)
-    
-    return JSONResponse(
-        status_code=500,
-        content=ErrorResponse(
-            message="Internal server error",
-            error_code="INTERNAL_ERROR",
-            request_id=getattr(request.state, 'request_id', None),
-            error_details={"error": str(exc)} if settings.debug else None
-        ).dict()
-    )
-
-
-# Health check endpoint - Clean Architecture Enhanced
-@app.get("/health", response_model=HealthResponse, tags=["Health"])
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Enhanced health check endpoint using Clean Architecture."""
-    try:
-        # Get health status from clean architecture services
-        health_status = await clean_controller.get_health_status()
-        
-        # Legacy compatibility checks
-        openai_available = bool(settings.openai_api_key)
-        redis_available = True  # Implement actual Redis health check
-        
-        return HealthResponse(
-            status=health_status.get('status', 'healthy'),
-            timestamp=health_status.get('timestamp', datetime.utcnow()),
-            version=settings.app_version,
-            dataset_loaded=health_status.get('dataset_loaded', False),
-            dataset_records=health_status.get('dataset_records', 0),
-            openai_available=openai_available,
-            redis_available=redis_available
-        )
-        
-    except Exception as e:
-        logger.error("Health check failed", error=str(e))
-        raise HTTPException(status_code=503, detail="Service unhealthy")
+    """Health check endpoint."""
+    health_status = codifier.get_health_status()
+
+    return HealthResponse(
+        status=health_status["status"],
+        version=settings.app_version,
+        database_connected=health_status["database_connected"],
+        active_catalog_version=health_status.get("active_catalog_version"),
+        catalog_records=health_status.get("catalog_records", 0),
+        embedding_model=health_status["embedding_model"]
+    )
 
 
-"""Batch-only vehicle matching endpoint - Clean Architecture"""
-@app.post("/match", response_model=BatchMatchResponse, tags=["Matching"])
-async def match_vehicles(
-    request_data: BatchMatchRequest,
-    request: Request
-):
+@app.post("/match", response_model=FlexibleMatchResponse)
+async def match_vehicles(request: FlexibleMatchRequest):
     """
-    Batch vehicle matching.
+    Match vehicles against the CATVER catalog with flexible JSON format.
 
-    Request body (BatchMatchRequest):
+    Handles numbered JSON objects with flexible field names:
     {
-        "vehicles": [
-            {
-                "description": "TOYOTA YARIS SOL L 2020",
-                "brand": "TOYOTA",
-                "model": "YARIS",
-                "year": 2020
-            }
-        ],
-        "insurer_id": "default",
-        "parallel_processing": true
+        "0": {"modelo": 2020, "description": "toyota yaris sol l"},
+        "1": {"año": 2019, "descripcion": "honda civic ex"},
+        "2": {"year": 2021, "desc": "nissan sentra advance"}
     }
     """
-    # Validate batch request
-    validation_errors = clean_controller.validate_batch_request(request_data)
-    if validation_errors:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Validation failed: {'; '.join(validation_errors)}"
-        )
+    start_time = time.time()
 
-    return await clean_controller.match_batch_vehicles(request_data)
+    results = {}
+    field_mappings = {}
+    errors = {}
 
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid request format. Expected VehicleInput or BatchMatchRequest."
-        )
-
-
-# Dataset statistics endpoint
-@app.get("/datasets/stats", tags=["Datasets"])
-async def get_dataset_stats():
-    """Get statistics about loaded datasets."""
+    # Use unified processing method
     try:
-        stats = data_loader.get_stats()
-        
-        return SuccessResponse(
-            message="Dataset statistics retrieved successfully",
-            data=stats
-        )
-        
+        # Process all inputs at once using the unified preprocessor
+        processed_batch = preprocessor.process(request.root)
+
+        # Process each successfully preprocessed row
+        for row_id, processed_row in processed_batch.items():
+            try:
+                # Create VehicleInput and match
+                vehicle_input = VehicleInput(
+                    modelo=processed_row["model_year"],
+                    description=processed_row["description"]
+                )
+                result = codifier.match_vehicle(vehicle_input)
+                results[row_id] = result
+
+            except Exception as e:
+                errors[row_id] = f"Matching failed: {str(e)}"
+
+        # Track rows that failed preprocessing
+        for row_id in request.root.keys():
+            if row_id not in processed_batch and row_id not in errors:
+                errors[row_id] = "Failed to detect year and description fields"
+
     except Exception as e:
-        logger.error("Failed to get dataset stats", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to retrieve dataset statistics")
+        # Handle preprocessing errors
+        print(f"Unified preprocessing failed: {e}")
+        for row_id in request.root.keys():
+            errors[row_id] = f"Preprocessing failed: {str(e)}"
+
+    successful_matches = sum(1 for r in results.values() if r.success)
+    processing_time_ms = (time.time() - start_time) * 1000
+
+    return FlexibleMatchResponse(
+        results=results,
+        total_processed=len(request.root),
+        successful_matches=successful_matches,
+        processing_time_ms=processing_time_ms,
+        field_mappings=field_mappings,
+        errors=errors
+    )
 
 
-# Initialize insurer endpoint
-@app.post("/insurers/{insurer_id}/initialize", tags=["Insurers"])
-async def initialize_insurer(insurer_id: str):
-    """Initialize data for a specific insurer."""
-    try:
-        logger.info("Initializing insurer", insurer_id=insurer_id)
-        
-        await matcher.initialize_insurer(insurer_id)
-        
-        # Get stats for the initialized insurer
-        stats = data_loader.get_stats().get(insurer_id, {})
-        
-        return SuccessResponse(
-            message=f"Insurer {insurer_id} initialized successfully",
-            data={
-                "insurer_id": insurer_id,
-                "records": stats.get("records", 0),
-                "brands": stats.get("brands", 0),
-                "models": stats.get("models", 0)
+@app.get("/metrics")
+async def get_metrics():
+    """Get service metrics and configuration."""
+    health_status = codifier.get_health_status()
+
+    return {
+        "service_info": {
+            "name": settings.app_name,
+            "version": settings.app_version,
+            "architecture": "Simplified Service (5 files)",
+            "embedding_model": settings.embedding_model,
+            "embedding_dimension": settings.embedding_dimension
+        },
+        "database": {
+            "connected": health_status["database_connected"],
+            "active_catalog": health_status.get("active_catalog_version"),
+            "records": health_status.get("catalog_records", 0)
+        },
+        "matching_config": {
+            "threshold_high": settings.threshold_high,
+            "threshold_low": settings.threshold_low,
+            "weight_embedding": settings.weight_embedding,
+            "weight_fuzzy": settings.weight_fuzzy,
+            "max_candidates": settings.max_candidates,
+            "max_results": settings.max_results
+        },
+        "capabilities": {
+            "embedding_similarity": health_status.get("embedder_available", False),
+            "llm_extraction": bool(settings.openai_api_key),
+            "pgvector_search": True,
+            "hybrid_scoring": True
+        }
+    }
+
+
+@app.post("/codify/batch")
+async def codify_batch(run_id: Optional[str] = None, case_id: Optional[str] = None):
+    """
+    Database-driven batch codification - compatible with main API.
+
+    Args:
+        run_id: Optional existing run ID to process
+        case_id: Optional case ID for new runs
+
+    Returns:
+        Run results with metrics
+    """
+    if not DATABASE_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Database modules not available - batch processing disabled"
+        )
+
+    start_time = time.time()
+
+    with Session(engine) as session:
+        if not run_id:
+            run_id = str(uuid.uuid4())
+            session.add(Run(
+                id=run_id,
+                case_id=case_id,
+                component=Component.CODIFY,
+                status=RunStatus.STARTED
+            ))
+            session.commit()
+
+        # Get all rows for this run
+        rows = session.query(Row).filter(
+            Row.run_id == run_id,
+            Row.transformed_data.isnot(None)
+        ).all()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"No transformed data found for run {run_id}")
+
+        # Process each row
+        results = []
+        for row in rows:
+            try:
+                # Extract modelo and description from transformed data
+                transformed = row.transformed_data
+                modelo = transformed.get("year") or transformed.get("modelo") or transformed.get("model_year")
+                description = transformed.get("description") or transformed.get("desc") or ""
+
+                if not modelo or not description:
+                    # Skip rows without required data
+                    continue
+
+                # Create VehicleInput for our codifier
+                vehicle_input = VehicleInput(modelo=int(modelo), description=str(description))
+
+                # Match using our simplified codifier
+                match_result = codifier.match_vehicle(vehicle_input)
+
+                # Store result in Codify table
+                codify_result = Codify(
+                    run_id=run_id,
+                    row_idx=row.row_index,
+                    suggested_cvegs=str(match_result.suggested_cvegs) if match_result.suggested_cvegs else None,
+                    confidence=match_result.confidence,
+                    candidates=[{
+                        "cvegs": str(c.cvegs),
+                        "score": c.final_score,
+                        "label": c.label
+                    } for c in match_result.candidates],
+                    decision=match_result.decision
+                )
+                session.add(codify_result)
+                results.append(match_result)
+
+            except Exception:
+                # Store failed result
+                codify_result = Codify(
+                    run_id=run_id,
+                    row_idx=row.row_index,
+                    suggested_cvegs=None,
+                    confidence=0.0,
+                    candidates=[],
+                    decision="no_match"
+                )
+                session.add(codify_result)
+
+        # Update run status and metrics
+        run = session.get(Run, run_id)
+        if run:
+            run.status = RunStatus.SUCCESS
+            run.finished_at = time.time()
+
+            # Calculate metrics
+            successful_matches = sum(1 for r in results if r.success)
+            run.metrics = {
+                "total_rows": len(rows),
+                "processed_rows": len(results),
+                "successful_matches": successful_matches,
+                "auto_accept": sum(1 for r in results if r.decision == "auto_accept"),
+                "needs_review": sum(1 for r in results if r.decision == "needs_review"),
+                "no_match": sum(1 for r in results if r.decision == "no_match"),
+                "processing_time_ms": (time.time() - start_time) * 1000,
+                "confidence_avg": sum(r.confidence for r in results) / len(results) if results else 0
             }
-        )
-        
-    except Exception as e:
-        logger.error("Failed to initialize insurer", 
-                    insurer_id=insurer_id, 
-                    error=str(e))
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to initialize insurer {insurer_id}: {str(e)}"
-        )
+
+        session.commit()
+
+        return {"run_id": run_id, "metrics": run.metrics}
 
 
-# Batch processing statistics endpoint
-@app.get("/batch/stats", tags=["Batch Processing"])
-async def get_batch_stats():
-    """Get batch processing statistics and configuration."""
-    try:
-        stats = await batch_processor.get_batch_stats()
-        
-        return SuccessResponse(
-            message="Batch statistics retrieved successfully",
-            data=stats
-        )
-        
-    except Exception as e:
-        logger.error("Failed to get batch stats", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to retrieve batch statistics")
-
-
-# Root endpoint
-@app.get("/", tags=["Root"])
+@app.get("/")
 async def root():
-    """Root endpoint with service information."""
+    """Root endpoint."""
     return {
         "service": settings.app_name,
         "version": settings.app_version,
@@ -305,105 +288,12 @@ async def root():
     }
 
 
-# Worker-style batch codification endpoint
-@app.post("/codify/batch", tags=["Codification"])
-async def codify_batch(run_id: Optional[str] = None, case_id: Optional[str] = None):
-    """
-    Run codification batch processing.
-    
-    Args:
-        run_id: Optional existing run ID to process
-        case_id: Optional case ID for new runs
-        
-    Returns:
-        Run results with metrics
-    """
-    # Import worker functions
-    from .worker.main import process_run
-    from sqlalchemy.orm import Session
-    import sys
-    import pathlib
-    
-    # Add packages to path
-    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent / "packages" / "db" / "src"))
-    
-    from app.db.session import engine
-    from app.db.models import Run, Component, RunStatus
-    
-    with Session(engine) as s:
-        if not run_id:
-            run_id = str(uuid.uuid4())
-            s.add(Run(
-                id=run_id, 
-                case_id=case_id, 
-                component=Component.CODIFY, 
-                status=RunStatus.STARTED
-            ))
-            s.commit()
-        
-        # Process the run synchronously for MVP
-        process_run(run_id)
-        
-        # Get updated run with metrics
-        run = s.get(Run, run_id)
-        return {"run_id": run_id, "metrics": run.metrics}
-
-
-# Enhanced metrics endpoint with Clean Architecture
-@app.get("/metrics", tags=["Monitoring"])
-async def get_metrics():
-    """Get comprehensive service metrics using Clean Architecture."""
-    try:
-        # Get metrics from clean architecture controller
-        clean_metrics = await clean_controller.get_service_metrics()
-        
-        # Legacy metrics for backward compatibility
-        dataset_stats = data_loader.get_stats()
-        batch_stats = await batch_processor.get_batch_stats()
-        
-        return {
-            "service_info": {
-                "name": settings.app_name,
-                "version": settings.app_version,
-                "architecture": "Clean Architecture with Domain-Driven Design",
-                "uptime": "N/A",  # Would implement actual uptime tracking
-                "features": clean_metrics.get('matching_features', {})
-            },
-            "clean_architecture": clean_metrics.get('clean_architecture', {}),
-            "dataset_stats": dataset_stats,
-            "batch_config": batch_stats,
-            "repository_metrics": clean_metrics.get('dataset_metrics', {}),
-            "performance_optimizations": clean_metrics.get('performance_optimizations', {}),
-            "system_config": {
-                "max_batch_size": settings.max_batch_size,
-                "max_concurrent_requests": settings.max_concurrent_requests,
-                "confidence_threshold": settings.confidence_threshold,
-                "chunk_size": 50,
-                "supported_excel_columns": [
-                    "Paquete De Cobert", "Marca", "Submarka", 
-                    "Descripcion", "SERIE", "Ano MOdelos"
-                ],
-                "clean_architecture_layers": [
-                    "Domain (Entities, Value Objects, Services)",
-                    "Application (Use Cases)",
-                    "Infrastructure (Repositories, Adapters)",
-                    "Presentation (Controllers)"
-                ]
-            }
-        }
-        
-    except Exception as e:
-        logger.error("Failed to get metrics", error=str(e))
-        raise HTTPException(status_code=500, detail="Failed to retrieve metrics")
-
-
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
-        "app.main:app",
+        "main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=settings.debug,
-        log_level=settings.log_level.lower()
+        port=8002,
+        reload=settings.debug
     )

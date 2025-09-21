@@ -1,25 +1,3 @@
-from .vehicle import (
-    VehicleInput,
-    VehicleAttributes,
-    MatchResult,
-    BatchMatchRequest,
-    BatchMatchResponse,
-    HealthResponse
-)
-from .response import (
-    APIResponse,
-    ErrorResponse,
-    SuccessResponse
-)
+"""Simplified vehicle codifier service."""
 
-__all__ = [
-    "VehicleInput",
-    "VehicleAttributes", 
-    "MatchResult",
-    "BatchMatchRequest",
-    "BatchMatchResponse",
-    "HealthResponse",
-    "APIResponse",
-    "ErrorResponse",
-    "SuccessResponse"
-]
+__version__ = "0.2.0-simplified"

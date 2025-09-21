@@ -55,7 +55,7 @@
    python tools/catalog_embed.py \
      --version "dev-v1.0" \
      --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
-     --model-id "intfloat/multilingual-e5-small"
+     --model-id "intfloat/multilingual-e5-large"
 
    # Activate the catalog version
    python tools/catalog_activate.py \
@@ -198,6 +198,77 @@ curl -X POST "http://localhost:8000/export?run_id=uuid"
 ./tools/eval_codifier.py --file data/samples/labeled_100.csv
 ```
 
+## Data Management
+
+### AMIS Catalog Data Operations
+
+The project provides several tools for managing AMIS catalog data:
+
+#### Loading Catalog Data
+```bash
+# Load from S3 (recommended)
+python tools/catalog_load.py \
+  --version "v1.0.0" \
+  --s3-uri "s3://raw/catalogs/CATVER_ENVIOS.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+
+# Load from local file
+python tools/catalog_load.py \
+  --version "v1.0.0" \
+  --file "data/amis-catalogue/CATVER_ENVIOS.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+```
+
+#### Deleting Catalog Data
+```bash
+# Check current table status
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action show-info
+
+# List available versions
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action list-versions
+
+# Delete specific version (with confirmation)
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-version \
+  --version "v1.0.0"
+
+# Delete all data (with confirmation)
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-all
+
+# Force deletion without prompts (for automation)
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-all \
+  --force
+```
+
+**Safety Features:**
+- Shows row counts before deletion
+- Requires explicit confirmation phrases
+- Lists available versions for reference
+- Includes `--force` flag for automated scripts
+
+#### Managing Embeddings
+```bash
+# Generate embeddings for catalog version
+python tools/catalog_embed.py \
+  --version "v1.0.0" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --model-id "intfloat/multilingual-e5-small"
+
+# Activate catalog version
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  activate --version "v1.0.0"
+```
+
 ## Common Tasks
 
 ### Adding a New Broker Profile
@@ -240,7 +311,7 @@ curl -X POST "http://localhost:8000/export?run_id=uuid"
    python tools/catalog_embed.py \
      --version "dev-v1.0" \
      --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
-     --model-id "intfloat/multilingual-e5-small"
+     --model-id "intfloat/multilingual-e5-large"
    ```
 
 ### Adding Export Fields

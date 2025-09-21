@@ -1,0 +1,140 @@
+"""Vehicle field extraction module for CATVER fields."""
+
+import re
+import json
+from typing import Optional
+from openai import OpenAI
+
+from .models import ExtractedFields
+from .config import get_settings
+from .utils import norm
+from .brand_lookup import BrandLookup
+
+
+class VehicleExtractor:
+    """Extract CATVER fields from vehicle descriptions using LLM or regex fallback."""
+
+    def __init__(self):
+        self.settings = get_settings()
+        self.openai_client = self._initialize_openai()
+        self.brand_lookup = BrandLookup()
+
+    def _initialize_openai(self) -> Optional[OpenAI]:
+        """Initialize OpenAI client for LLM field extraction."""
+        if self.settings.openai_api_key:
+            return OpenAI(api_key=self.settings.openai_api_key)
+        return None
+
+    def extract_fields(self, description: str) -> ExtractedFields:
+        """Extract CATVER fields from vehicle description using LLM or fallback."""
+        if not self.openai_client:
+            return self._fallback_extraction(description)
+
+        try:
+            return self._llm_extraction(description)
+        except Exception:
+            # Fall back to regex extraction if LLM fails
+            return self._fallback_extraction(description)
+
+    def _llm_extraction(self, description: str) -> ExtractedFields:
+        """Extract fields using OpenAI LLM."""
+        prompt = f'''Extract vehicle information from this description and return as JSON:
+
+Description: "{description}"
+
+Extract these fields:
+- marca: brand name (toyota, nissan, etc)
+- submarca: model name (yaris, sentra, etc)
+- cvesegm: vehicle segment (compacto, sedan, suv, pickup, etc)
+- descveh: cleaned description (same as input but normalized)
+- tipveh: vehicle type (auto, camioneta, motocicleta, etc)
+
+Return only valid JSON with these exact field names. If a field cannot be determined, use null.
+
+Example:
+{{"marca": "toyota", "submarca": "yaris", "cvesegm": "compacto", "descveh": "toyota yaris sol l 4 cilindros", "tipveh": "auto"}}'''
+
+        response = self.openai_client.chat.completions.create(
+            model=self.settings.openai_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=200
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # Extract JSON from response
+        try:
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                data = json.loads(json_str)
+                return ExtractedFields(**data)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        # Fallback if JSON parsing fails
+        return self._fallback_extraction(description)
+
+    def _fallback_extraction(self, description: str) -> ExtractedFields:
+        """Enhanced extraction using brand lookup and improved pattern matching."""
+        desc_lower = description.lower()
+
+        # Enhanced brand extraction using lookup table
+        marca = self.brand_lookup.extract_brand(description)
+
+        # Try to extract model (word after brand)
+        submarca = None
+        if marca:
+            # Clean marca for pattern matching
+            marca_clean = marca.lower().replace('-', '').replace(' ', '')
+            # Try multiple patterns to find submarca
+            patterns = [
+                rf'{marca.lower()}\s+(\w+)',
+                rf'{marca_clean}\s+(\w+)',
+                rf'\b{marca.lower()}\s+(\w+)'
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, desc_lower)
+                if match:
+                    submarca = match.group(1)
+                    break
+
+        # Enhanced segment classification with commercial vehicle support
+        cvesegm = None
+        if any(word in desc_lower for word in ['pickup', 'pick up', 'doble cabina']):
+            cvesegm = 'pickup'
+        elif any(word in desc_lower for word in ['suv', 'crossover']):
+            cvesegm = 'suv'
+        elif any(word in desc_lower for word in ['sedan']):
+            cvesegm = 'sedan'
+        elif any(word in desc_lower for word in ['hatchback', 'compacto']):
+            cvesegm = 'compacto'
+        elif any(word in desc_lower for word in ['tracto', 'tractocamion', 'tractor']):
+            cvesegm = 'tractocamion'
+        elif any(word in desc_lower for word in ['camion', 'truck']):
+            cvesegm = 'camion'
+
+        # Enhanced vehicle type detection using brand intelligence
+        tipveh = self.brand_lookup.suggest_tipveh(marca or '', description)
+
+        return ExtractedFields(
+            marca=marca,
+            submarca=submarca,
+            cvesegm=cvesegm,
+            descveh=norm(description),
+            tipveh=tipveh
+        )
+
+    def get_health_status(self) -> dict:
+        """Get extractor health status."""
+        base_status = {
+            "openai_available": self.openai_client is not None,
+            "openai_model": self.settings.openai_model
+        }
+
+        # Add brand lookup status
+        brand_status = self.brand_lookup.get_health_status()
+        base_status.update(brand_status)
+
+        return base_status

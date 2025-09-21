@@ -22,8 +22,13 @@ import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "packages" / "storage" / "src"))
 from app.storage.s3 import download_to_tmp
 
+# Add vehicle codifier utils for normalization
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "services" / "vehicle-codifier" / "src"))
+from vehicle_codifier.utils import normalize_catalog_field
+
 
 def norm(s: Any) -> str:
+    """Legacy normalization function - use normalize_catalog_field() for new code."""
     if s is None:
         return ""
     return unidecode(str(s).strip().lower())
@@ -38,12 +43,90 @@ def find_column(df: pd.DataFrame, *candidates: str) -> str:
     return None
 
 
+def enhance_descveh(rec: dict) -> str:
+    """
+    Enhance descveh by adding missing marca, submarca, cvesegm, and tipveh.
+
+    Rules:
+    1. Add marca and submarca to front if missing
+    2. Add cvesegm and tipveh to end if missing
+    3. Special case: "tracto camion" -> use "tracto" for checking
+
+    Args:
+        rec: Vehicle record dictionary
+
+    Returns:
+        Enhanced descveh string
+    """
+    descveh = str(rec.get("descveh", "")).strip()
+    marca = normalize_catalog_field(rec.get("marca", ""))
+    submarca = normalize_catalog_field(rec.get("submarca", ""))
+    cvesegm = normalize_catalog_field(rec.get("cvesegm", ""))
+    tipveh = normalize_catalog_field(rec.get("tipveh", ""))
+
+    # Normalize descveh for checking
+    descveh_normalized = normalize_catalog_field(descveh)
+
+    # Special handling for tipveh "tracto camion" -> "tracto"
+    tipveh_check = tipveh
+    if tipveh.lower() in ["tracto camion", "tracto-camion"]:
+        tipveh_check = "tracto"
+        tipveh_to_add = "tracto"  # Add only "tracto" instead of "tracto camion"
+    else:
+        tipveh_to_add = tipveh
+
+    # Check what's missing and build enhanced descveh
+    parts_to_add_front = []
+    parts_to_add_end = []
+
+    # Check if marca is missing (add to front)
+    if marca and marca not in descveh_normalized:
+        parts_to_add_front.append(marca)
+
+    # Check if submarca is missing (add to front after marca)
+    if submarca and submarca not in descveh_normalized:
+        parts_to_add_front.append(submarca)
+
+    # Check if cvesegm is missing (add to end)
+    if cvesegm and cvesegm not in descveh_normalized:
+        parts_to_add_end.append(cvesegm)
+
+    # Check if tipveh is missing (add to end)
+    if tipveh_check and tipveh_check not in descveh_normalized:
+        parts_to_add_end.append(tipveh_to_add)
+
+    # Build enhanced descveh
+    enhanced_parts = []
+
+    # Add missing parts to front
+    if parts_to_add_front:
+        enhanced_parts.extend(parts_to_add_front)
+
+    # Add original descveh
+    if descveh:
+        enhanced_parts.append(descveh)
+
+    # Add missing parts to end
+    if parts_to_add_end:
+        enhanced_parts.extend(parts_to_add_end)
+
+    # Join with spaces and normalize
+    enhanced_descveh = " ".join(enhanced_parts)
+    normalized = normalize_catalog_field(enhanced_descveh)
+
+    # Truncate to 150 characters to fit database limit
+    return normalized[:150] if len(normalized) > 150 else normalized
+
+
 def build_label(rec: dict) -> str:
     """
     Build structured label using CATVER column order, modelo (year) first.
 
     Format: modelo=<year> | marca=<brand> | submarca=<submarca> | ...
     Uses all CATVER columns except cvegs (already primary identifier).
+
+    Now uses normalize_catalog_field() for consistent lowercase normalization
+    with VIN removal and proper text cleaning.
     """
     parts = []
 
@@ -52,10 +135,11 @@ def build_label(rec: dict) -> str:
         parts.append(f"modelo={rec['modelo']}")
 
     # Add all other CATVER columns in order (except cvegs)
+    # Use normalize_catalog_field for text fields to ensure consistent processing
     if rec.get("marca"):
-        parts.append(f"marca={norm(rec['marca'])}")
+        parts.append(f"marca={normalize_catalog_field(rec['marca'])}")
     if rec.get("submarca"):
-        parts.append(f"submarca={norm(rec['submarca'])}")
+        parts.append(f"submarca={normalize_catalog_field(rec['submarca'])}")
     if rec.get("numver"):
         parts.append(f"numver={rec['numver']}")
     if rec.get("ramo"):
@@ -67,15 +151,15 @@ def build_label(rec: dict) -> str:
     if rec.get("martip"):
         parts.append(f"martip={rec['martip']}")
     if rec.get("cvesegm"):
-        parts.append(f"cvesegm={norm(rec['cvesegm'])}")
+        parts.append(f"cvesegm={normalize_catalog_field(rec['cvesegm'])}")
     if rec.get("descveh"):
-        parts.append(f"descveh={norm(rec['descveh'])}")
+        parts.append(f"descveh={normalize_catalog_field(rec['descveh'])}")
     if rec.get("idperdiod"):
         parts.append(f"idperdiod={rec['idperdiod']}")
     if rec.get("sumabas"):
         parts.append(f"sumabas={rec['sumabas']}")
     if rec.get("tipveh"):
-        parts.append(f"tipveh={norm(rec['tipveh'])}")
+        parts.append(f"tipveh={normalize_catalog_field(rec['tipveh'])}")
 
     return " | ".join(parts)
 
@@ -153,23 +237,25 @@ def run(version: str, s3_uri: str, dburl: str, xlsx_path: str = None) -> None:
         try:
             rec = {
                 "catalog_version": version,
-                "marca": str(r[column_mapping['MARCA']]).strip(),
-                "submarca": str(r[column_mapping['SUBMARCA']]).strip(),
+                "marca": normalize_catalog_field(str(r[column_mapping['MARCA']]).strip()),
+                "submarca": normalize_catalog_field(str(r[column_mapping['SUBMARCA']]).strip()),
                 "numver": int(r[column_mapping['NUMVER']]) if pd.notna(r[column_mapping['NUMVER']]) else 0,
                 "ramo": int(r[column_mapping['RAMO']]) if pd.notna(r[column_mapping['RAMO']]) else 0,
                 "cvemarc": int(r[column_mapping['CVEMARC']]) if pd.notna(r[column_mapping['CVEMARC']]) else 0,
                 "cvesubm": int(r[column_mapping['CVESUBM']]) if pd.notna(r[column_mapping['CVESUBM']]) else 0,
                 "martip": int(r[column_mapping['MARTIP']]) if pd.notna(r[column_mapping['MARTIP']]) else 0,
-                "cvesegm": str(r[column_mapping['CVESEGM']]).strip(),
+                "cvesegm": normalize_catalog_field(str(r[column_mapping['CVESEGM']]).strip()),
                 "modelo": int(r[column_mapping['MODELO']]) if pd.notna(r[column_mapping['MODELO']]) else 0,
                 "cvegs": int(r[column_mapping['CVEGS']]) if pd.notna(r[column_mapping['CVEGS']]) else 0,
                 "descveh": str(r[column_mapping['DESCVEH']]).strip(),
                 "idperdiod": int(r[column_mapping['IDPERDIOD']]) if pd.notna(r[column_mapping['IDPERDIOD']]) else 0,
                 "sumabas": float(str(r[column_mapping['SUMABAS']]).replace(',', '')) if pd.notna(r[column_mapping['SUMABAS']]) else 0.0,
-                "tipveh": str(r[column_mapping['TIPVEH']]).strip(),
+                "tipveh": normalize_catalog_field(str(r[column_mapping['TIPVEH']]).strip()),
             }
-            # Generate structured label
-            rec["label"] = build_label(rec)
+
+            # Enhance descveh by adding missing marca, submarca, cvesegm, and tipveh
+            rec["descveh"] = enhance_descveh(rec)
+
             rows.append(rec)
         except (ValueError, TypeError) as e:
             print(f"Warning: Skipping row {len(rows)+1} due to data conversion error: {e}")
@@ -191,16 +277,16 @@ def run(version: str, s3_uri: str, dburl: str, xlsx_path: str = None) -> None:
                 "DELETE FROM amis_catalog WHERE catalog_version = :v"
             ), {"v": version})
 
-            # Insert new data with CATVER schema including structured label
+            # Insert new data with CATVER schema (no label column)
             cx.execute(text(
                 """
                 INSERT INTO amis_catalog(
                     catalog_version, marca, submarca, numver, ramo, cvemarc, cvesubm,
-                    martip, cvesegm, modelo, cvegs, descveh, idperdiod, sumabas, tipveh, label
+                    martip, cvesegm, modelo, cvegs, descveh, idperdiod, sumabas, tipveh
                 )
                 VALUES (
                     :catalog_version, :marca, :submarca, :numver, :ramo, :cvemarc, :cvesubm,
-                    :martip, :cvesegm, :modelo, :cvegs, :descveh, :idperdiod, :sumabas, :tipveh, :label
+                    :martip, :cvesegm, :modelo, :cvegs, :descveh, :idperdiod, :sumabas, :tipveh
                 )
                 """
             ), rows)

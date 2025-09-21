@@ -54,7 +54,7 @@ python tools/catalog_load.py \
 python tools/catalog_embed.py \
   --version "dev-v1.0" \
   --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
-  --model-id "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  --model-id "intfloat/multilingual-e5-large"
 
 # Activate catalog version
 python tools/catalog_activate.py \

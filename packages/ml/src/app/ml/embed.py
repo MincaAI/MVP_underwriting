@@ -14,16 +14,16 @@ class VehicleEmbedder:
     Optimized for Spanish and English vehicle descriptions with feature extraction.
     """
     
-    def __init__(self, model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"):
+    def __init__(self, model_name: str = "intfloat/multilingual-e5-large"):
         """
         Initialize the embedder with a multilingual model.
-        
+
         Args:
             model_name: Name of the sentence transformer model to use
         """
         self.model_name = model_name
         self.model: Optional[SentenceTransformer] = None
-        self.dimension = 384  # Default for MiniLM-L12-v2
+        self.dimension = 1024  # Default for multilingual-e5-large
         
     def _ensure_model_loaded(self):
         """Lazy load the sentence transformer model."""
@@ -255,6 +255,6 @@ def get_embedder(model_name: Optional[str] = None) -> VehicleEmbedder:
     global _global_embedder
     
     if _global_embedder is None or (model_name and _global_embedder.model_name != model_name):
-        _global_embedder = VehicleEmbedder(model_name or "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+        _global_embedder = VehicleEmbedder(model_name or "intfloat/multilingual-e5-large")
     
     return _global_embedder

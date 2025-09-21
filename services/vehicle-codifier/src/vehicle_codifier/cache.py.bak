@@ -1,0 +1,230 @@
+"""Vehicle catalog caching for optimal matching performance."""
+
+import time
+import threading
+from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Tuple
+import numpy as np
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+from rapidfuzz import fuzz
+
+from .config import get_settings
+from .models import Candidate
+
+
+class VehicleCatalogCache:
+    """In-memory catalog cache with vector similarity search."""
+
+    def __init__(self):
+        self.settings = get_settings()
+        self.engine = create_engine(self.settings.database_url)
+
+        # Cache data structures
+        self._catalog_data: List[Dict] = []
+        self._embeddings: Optional[np.ndarray] = None
+        self._last_refresh: Optional[datetime] = None
+        self._cache_lock = threading.RLock()
+        self._is_loaded = False
+
+        # Load cache on startup if enabled
+        if self.settings.cache_enabled and self.settings.cache_preload_on_startup:
+            self.refresh_cache()
+
+    def refresh_cache(self) -> bool:
+        """Refresh the in-memory cache from database."""
+        try:
+            start_time = time.time()
+            print("🔄 Refreshing catalog cache from database...")
+
+            with self._cache_lock:
+                # Load catalog data with embeddings
+                with Session(self.engine) as session:
+                    result = session.execute(text("""
+                        SELECT cvegs, marca, submarca, modelo, descveh, label, embedding
+                        FROM amis_catalog
+                        WHERE catalog_version = (
+                            SELECT version FROM catalog_import WHERE status IN ('ACTIVE', 'LOADED') ORDER BY version DESC LIMIT 1
+                        )
+                        AND embedding IS NOT NULL
+                        ORDER BY cvegs
+                    """))
+
+                    rows = result.fetchall()
+
+                    if not rows:
+                        print("⚠️ No catalog data with embeddings found")
+                        return False
+
+                    # Store catalog metadata
+                    self._catalog_data = []
+                    embeddings_list = []
+
+                    for row in rows:
+                        # Parse embedding from database (stored as text)
+                        try:
+                            # Convert string representation back to list
+                            embedding_str = row.embedding.strip('[]')
+                            embedding = [float(x.strip()) for x in embedding_str.split(',')]
+                            embeddings_list.append(embedding)
+
+                            self._catalog_data.append({
+                                'cvegs': row.cvegs,
+                                'marca': row.marca,
+                                'submarca': row.submarca,
+                                'modelo': row.modelo,
+                                'descveh': row.descveh,
+                                'label': row.label
+                            })
+                        except (ValueError, AttributeError) as e:
+                            print(f"⚠️ Skipping row with invalid embedding: {e}")
+                            continue
+
+                    # Convert to numpy array for efficient operations
+                    if embeddings_list:
+                        self._embeddings = np.array(embeddings_list, dtype=np.float32)
+                        # Normalize embeddings for cosine similarity
+                        norms = np.linalg.norm(self._embeddings, axis=1, keepdims=True)
+                        self._embeddings = self._embeddings / norms
+
+                        self._last_refresh = datetime.now()
+                        self._is_loaded = True
+
+                        load_time = (time.time() - start_time) * 1000
+                        print(f"✅ Catalog cache loaded: {len(self._catalog_data)} records, {load_time:.2f}ms")
+
+                        # Memory usage estimation
+                        memory_mb = (self._embeddings.nbytes + len(self._catalog_data) * 500) / 1024 / 1024
+                        print(f"📊 Cache memory usage: ~{memory_mb:.1f}MB")
+
+                        return True
+                    else:
+                        print("❌ No valid embeddings found")
+                        return False
+
+        except Exception as e:
+            print(f"❌ Cache refresh failed: {e}")
+            self._is_loaded = False
+            return False
+
+    def should_refresh_cache(self) -> bool:
+        """Check if cache should be refreshed based on age."""
+        if not self._last_refresh:
+            return True
+
+        refresh_interval = timedelta(hours=self.settings.cache_refresh_interval_hours)
+        return datetime.now() - self._last_refresh > refresh_interval
+
+    def find_candidates_cached(
+        self,
+        query_embedding: List[float],
+        query_label: str,
+        year_min: Optional[int] = None,
+        year_max: Optional[int] = None
+    ) -> List[Candidate]:
+        """Find candidates using in-memory cache with vector similarity."""
+
+        if not self.is_cache_available():
+            raise RuntimeError("Cache not available, use database fallback")
+
+        with self._cache_lock:
+            try:
+                start_time = time.time()
+
+                # Convert query embedding to numpy array and normalize
+                query_vec = np.array(query_embedding, dtype=np.float32)
+                query_vec = query_vec / np.linalg.norm(query_vec)
+
+                # Calculate cosine similarities using vectorized operations
+                similarities = np.dot(self._embeddings, query_vec)
+
+                # Apply filters and collect candidates
+                candidates = []
+                for i, similarity in enumerate(similarities):
+                    catalog_record = self._catalog_data[i]
+
+                    # Apply year filter only (brand filtering removed for reliability)
+                    if year_min is not None or year_max is not None:
+                        record_year = catalog_record['modelo']
+                        if year_min is not None and record_year < year_min:
+                            continue
+                        if year_max is not None and record_year > year_max:
+                            continue
+
+                    # Calculate fuzzy score for hybrid ranking
+                    fuzzy_score = self._calculate_fuzzy_score(query_label, catalog_record['label'])
+
+                    # Hybrid final score (70% embedding + 30% fuzzy)
+                    final_score = (
+                        self.settings.weight_embedding * similarity +
+                        self.settings.weight_fuzzy * fuzzy_score
+                    )
+
+                    candidates.append(Candidate(
+                        cvegs=catalog_record['cvegs'],
+                        marca=catalog_record['marca'],
+                        submarca=catalog_record['submarca'],
+                        modelo=catalog_record['modelo'],
+                        descveh=catalog_record['descveh'],
+                        label=catalog_record['label'],
+                        similarity_score=float(similarity),
+                        fuzzy_score=fuzzy_score,
+                        final_score=final_score
+                    ))
+
+                # Sort by final score and limit results
+                candidates.sort(key=lambda x: x.final_score, reverse=True)
+                candidates = candidates[:self.settings.max_candidates]
+
+                search_time = (time.time() - start_time) * 1000
+                print(f"🚀 Cache search: {len(candidates)} candidates, {search_time:.2f}ms")
+
+                return candidates
+
+            except Exception as e:
+                print(f"❌ Cache search failed: {e}")
+                raise RuntimeError(f"Cache search error: {e}")
+
+    def _calculate_fuzzy_score(self, query_label: str, catalog_label: str) -> float:
+        """Calculate fuzzy string similarity score."""
+        return fuzz.ratio(query_label.lower(), catalog_label.lower()) / 100.0
+
+    def is_cache_available(self) -> bool:
+        """Check if cache is loaded and available."""
+        return self.settings.cache_enabled and self._is_loaded and self._embeddings is not None
+
+    def get_cache_stats(self) -> Dict:
+        """Get cache statistics."""
+        with self._cache_lock:
+            memory_usage = 0
+            if self._embeddings is not None:
+                memory_usage = (self._embeddings.nbytes + len(self._catalog_data) * 500) / 1024 / 1024
+
+            return {
+                "cache_enabled": self.settings.cache_enabled,
+                "cache_loaded": self._is_loaded,
+                "record_count": len(self._catalog_data),
+                "last_refresh": self._last_refresh.isoformat() if self._last_refresh else None,
+                "memory_usage_mb": round(memory_usage, 2),
+                "should_refresh": self.should_refresh_cache(),
+                "embedding_dimension": self._embeddings.shape[1] if self._embeddings is not None else 0
+            }
+
+    def get_health_status(self) -> Dict:
+        """Get cache health status."""
+        try:
+            stats = self.get_cache_stats()
+            return {
+                "cache_healthy": self.is_cache_available(),
+                "cache_enabled": stats["cache_enabled"],
+                "cache_loaded": stats["cache_loaded"],
+                "record_count": stats["record_count"],
+                "memory_usage_mb": stats["memory_usage_mb"],
+                "last_refresh": stats["last_refresh"],
+                "needs_refresh": stats["should_refresh"]
+            }
+        except Exception as e:
+            return {
+                "cache_healthy": False,
+                "error": str(e)
+            }

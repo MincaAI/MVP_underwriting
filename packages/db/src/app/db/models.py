@@ -168,7 +168,7 @@ class AmisCatalog(Base):
     label: Mapped[str] = mapped_column(Text, nullable=True, index=True)  # Structured label for embeddings
 
     # ML and metadata columns
-    embedding: Mapped[Vector] = mapped_column(Vector(384), nullable=True)
+    embedding: Mapped[Vector] = mapped_column(Vector(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

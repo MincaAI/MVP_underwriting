@@ -713,6 +713,199 @@ All endpoints return consistent error responses:
 
 ---
 
+## Data Management Tools
+
+The platform includes several CLI tools for managing AMIS catalog data and system maintenance.
+
+### Catalog Data Management
+
+#### delete_amis_data.py
+
+Safely delete data from the amis_catalog table with multiple options and safety confirmations.
+
+**Usage:**
+```bash
+python tools/delete_amis_data.py --db DATABASE_URL --action ACTION [OPTIONS]
+```
+
+**Parameters:**
+- `--db` (required): PostgreSQL database URL
+- `--action` (required): Action to perform
+  - `show-info`: Display current table statistics
+  - `list-versions`: List all catalog versions
+  - `delete-version`: Delete specific catalog version
+  - `delete-all`: Delete all data from table
+- `--version`: Catalog version (required for delete-version)
+- `--force`: Skip confirmation prompts
+
+**Examples:**
+
+**Check Current Status:**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action show-info
+```
+
+**Response:**
+```
+📊 Current amis_catalog table status:
+   Total rows: 50000
+   Versions:
+     v1.0.0: 25000 rows
+     v1.1.0: 25000 rows
+```
+
+**List Available Versions:**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action list-versions
+```
+
+**Delete Specific Version (Safe):**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-version \
+  --version "v1.0.0"
+```
+
+**Interactive Confirmation:**
+```
+📊 Found 25000 rows for version 'v1.0.0'
+⚠️  WARNING: This will delete 25000 rows for version 'v1.0.0'
+Type 'DELETE v1.0.0' to confirm: DELETE v1.0.0
+✅ Deleted 25000 rows for version 'v1.0.0'
+```
+
+**Delete All Data (Safe):**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-all
+```
+
+**Force Deletion (Automation):**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-all \
+  --force
+```
+
+**Safety Features:**
+- **Row Count Display**: Shows exactly how many rows will be deleted
+- **Explicit Confirmation**: Requires typing specific confirmation phrases
+- **Version Validation**: Checks if version exists before attempting deletion
+- **Error Handling**: Clear error messages for invalid operations
+- **Force Mode**: Bypass confirmations for automated scripts
+
+#### catalog_load.py
+
+Load AMIS catalog data from S3 or local files with versioning support.
+
+**Usage:**
+```bash
+python tools/catalog_load.py --version VERSION --db DATABASE_URL [--s3-uri S3_URI | --file FILE_PATH]
+```
+
+**Examples:**
+```bash
+# Load from S3
+python tools/catalog_load.py \
+  --version "v2.0.0" \
+  --s3-uri "s3://raw/catalogs/CATVER_ENVIOS.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+
+# Load from local file
+python tools/catalog_load.py \
+  --version "v2.0.0" \
+  --file "data/amis-catalogue/CATVER_ENVIOS.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+```
+
+#### catalog_embed.py
+
+Generate embeddings for catalog versions using ML models.
+
+**Usage:**
+```bash
+python tools/catalog_embed.py --version VERSION --db DATABASE_URL --model-id MODEL_ID
+```
+
+**Example:**
+```bash
+python tools/catalog_embed.py \
+  --version "v2.0.0" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --model-id "intfloat/multilingual-e5-large"
+```
+
+#### catalog_activate.py
+
+Manage active catalog versions for the matching service.
+
+**Usage:**
+```bash
+python tools/catalog_activate.py --db DATABASE_URL ACTION [--version VERSION]
+```
+
+**Examples:**
+```bash
+# List all versions
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  list
+
+# Activate specific version
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  activate --version "v2.0.0"
+```
+
+### Complete Data Management Workflow
+
+**1. Clean Previous Data:**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action delete-version \
+  --version "v1.0.0"
+```
+
+**2. Load New Catalog:**
+```bash
+python tools/catalog_load.py \
+  --version "v2.0.0" \
+  --s3-uri "s3://raw/catalogs/CATVER_ENVIOS_2024.xlsx" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca"
+```
+
+**3. Generate Embeddings:**
+```bash
+python tools/catalog_embed.py \
+  --version "v2.0.0" \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --model-id "intfloat/multilingual-e5-large"
+```
+
+**4. Activate New Version:**
+```bash
+python tools/catalog_activate.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  activate --version "v2.0.0"
+```
+
+**5. Verify Setup:**
+```bash
+python tools/delete_amis_data.py \
+  --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
+  --action show-info
+```
+
+---
+
 ## Examples
 
 ### Complete Workflow
@@ -749,7 +942,7 @@ python tools/catalog_load.py \
 python tools/catalog_embed.py \
   --version "v1.0.0" \
   --db "postgresql+psycopg://minca:minca@localhost:5432/minca" \
-  --model-id "intfloat/multilingual-e5-small"
+  --model-id "intfloat/multilingual-e5-large"
 
 # Activate catalog version
 python tools/catalog_activate.py \

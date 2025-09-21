@@ -1,47 +1,46 @@
 # Vehicle Codifier Service
 
-A unified vehicle codification service that combines sophisticated vehicle matching with ML-powered AMIS/CVEGS code classification. This service consolidates the functionality of the previous `vehicle-matcher` and `worker-codifier` services into a single, well-architected solution.
+A **simplified** vehicle codification service that provides accurate CVEGS matching using pgvector similarity search and CATVER structured labels. This service replaces the previous over-engineered Clean Architecture implementation.
 
 ## 🏗️ Architecture
 
-Built using **Clean Architecture** principles with **Domain-Driven Design**:
+Built using **simple, direct approach** with 5 core files:
 
 ```
 vehicle-codifier/
 ├── src/vehicle_codifier/
-│   ├── domain/              # Business logic (entities, value objects, services)
-│   ├── application/         # Use cases and workflows
-│   ├── infrastructure/      # External concerns (repositories, adapters)
-│   ├── presentation/        # API controllers
-│   ├── worker/             # Background processing logic
-│   ├── models/             # Pydantic models
-│   ├── services/           # Legacy services
-│   ├── config/             # Configuration
-│   └── main.py            # FastAPI application
+│   ├── main.py         # FastAPI app (150 lines)
+│   ├── service.py      # Core matching logic (200 lines)
+│   ├── models.py       # Pydantic models (70 lines)
+│   ├── config.py       # Settings (40 lines)
+│   ├── utils.py        # LLM extraction (120 lines)
+│   └── __init__.py     # Package init
+├── test_service.py     # Test script
+├── run_service.py      # Run script
 ├── Dockerfile
 ├── pyproject.toml
 └── README.md
+
+TOTAL: ~580 lines (vs 2000+ lines previously)
 ```
 
 ## ✨ Key Features
 
-### 🎯 Dual Processing Modes
-- **Web API**: Real-time vehicle matching with FastAPI
-- **Background Worker**: Database-driven batch processing
+### 🎯 Processing Modes
+- **Direct API**: Real-time vehicle matching (`/match`, `/match/batch`)
+- **Database Integration**: Compatible with main API pipeline (`/codify/batch`)
 
-### 🤖 Advanced Matching
-- **Clean Architecture**: Domain-driven design with strict separation of concerns
-- **AI-Powered**: OpenAI GPT models for intelligent attribute extraction
-- **High Accuracy**: Multi-stage matching with confidence scoring (85%+ success rate)
-- **CATVER Integration**: Full support for Mexican insurance CATVER format (14 columns)
-- **Structured Labels**: Uses fixed-order label format for consistent embeddings
+### 🤖 Intelligent Matching
+- **LLM Extraction**: OpenAI GPT extracts CATVER fields from descriptions
+- **pgvector Similarity**: Uses 384-dimensional embeddings with HNSW indexing
+- **CATVER Integration**: Full support for Mexican insurance CATVER format
+- **Structured Labels**: Fixed-order labels matching catalog format
 
 ### 📊 Processing Features
-- **Batch Processing**: Chunked parallel processing (configurable batch sizes)
-- **Semantic Search**: 384-dimensional embeddings with pgvector (intfloat/multilingual-e5-small)
-- **Reranking**: Hybrid scoring (70% embeddings + 30% fuzzy matching)
-- **Decision Engine**: Three-tier decisions (auto_accept, needs_review, no_match)
-- **CATVER Compliance**: Works with structured labels containing all CATVER fields
+- **Semantic Search**: Real pgvector similarity with `<=>` operator
+- **Hybrid Scoring**: 70% embedding + 30% fuzzy string matching
+- **Decision Thresholds**: auto_accept (≥0.90), needs_review (≥0.70), no_match
+- **Active Catalog**: Automatically uses ACTIVE catalog version from database
 
 ## 🚀 Quick Start
 
@@ -72,42 +71,52 @@ The service will be available at `http://localhost:8002`
 ```bash
 cd services/vehicle-codifier
 poetry install
+
+# Simple way
+python run_service.py
+
+# Or with uvicorn directly
 poetry run uvicorn vehicle_codifier.main:app --host 0.0.0.0 --port 8002 --reload
+```
+
+### Testing
+```bash
+python test_service.py
 ```
 
 ## 📖 API Endpoints
 
-### Vehicle Matching API (Batch Only)
-#### Batch Vehicle Match
+### Direct Vehicle Matching
+#### Single Vehicle Match
 ```bash
 curl -X POST "http://localhost:8002/match" \
   -H "Content-Type: application/json" \
   -d '{
-    "vehicles": [
-      {
-        "description": "TOYOTA YARIS SOL L 2020",
-        "brand": "TOYOTA",
-        "model": "YARIS",
-        "year": 2020
-      },
-      {
-        "description": "HONDA CIVIC EX 2019",
-        "brand": "HONDA",
-        "model": "CIVIC",
-        "year": 2019
-      }
-    ],
-    "insurer_id": "default",
-    "parallel_processing": true
+    "modelo": 2020,
+    "description": "toyota yaris sol l 4 cilindros"
   }'
 ```
 
-### Worker Processing API
+#### Batch Vehicle Match
+```bash
+curl -X POST "http://localhost:8002/match/batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vehicles": [
+      {"modelo": 2020, "description": "toyota yaris sol l"},
+      {"modelo": 2019, "description": "honda civic ex"}
+    ]
+  }'
+```
+
+### Database Integration (Main API)
 
 #### Batch Codification (Database-Driven)
 ```bash
+# Process existing run
 curl -X POST "http://localhost:8002/codify/batch?run_id=existing-run-id"
-# or create new run
+
+# Create new run
 curl -X POST "http://localhost:8002/codify/batch?case_id=test-case"
 ```
 
@@ -156,28 +165,32 @@ label_example = "modelo=2020 | marca=toyota | submarca=yaris | numver=2002 | ram
 ### Match Result
 ```json
 {
-  "cvegs_code": "1234567890",
-  "confidence_score": 0.92,
-  "confidence_level": "high",
-  "matched_brand": "TOYOTA",
-  "matched_model": "YARIS",
-  "matched_year": 2020,
-  "extracted_attributes": {
-    "brand": "TOYOTA",
-    "model": "YARIS",
-    "year": 2020,
-    "fuel_type": "GASOLINE",
-    "body_style": "HATCHBACK"
-  },
-  "processing_time_ms": 245.7,
-  "match_method": "clean_architecture_enhanced",
+  "success": true,
+  "decision": "auto_accept",
+  "confidence": 0.92,
+  "suggested_cvegs": 1234567890,
   "candidates": [
     {
-      "cvegs": "1234567890",
-      "score": 0.92,
-      "label": "modelo=2020 | marca=toyota | submarca=yaris | numver=2002 | ramo=711 | cvemarc=47 | cvesubm=1245 | martip=615 | cvesegm=compacto | descveh=yaris sol l 4 cilindros | idperdiod=202002 | sumabas=195000.0 | tipveh=auto"
+      "cvegs": 1234567890,
+      "marca": "toyota",
+      "submarca": "yaris",
+      "modelo": 2020,
+      "descveh": "yaris sol l 4 cilindros",
+      "label": "modelo=2020 | marca=toyota | submarca=yaris | cvesegm=compacto | descveh=yaris sol l 4 cilindros | tipveh=auto",
+      "similarity_score": 0.89,
+      "fuzzy_score": 0.95,
+      "final_score": 0.92
     }
-  ]
+  ],
+  "extracted_fields": {
+    "marca": "toyota",
+    "submarca": "yaris",
+    "cvesegm": "compacto",
+    "descveh": "toyota yaris sol l 4 cilindros",
+    "tipveh": "auto"
+  },
+  "processing_time_ms": 156.3,
+  "query_label": "modelo=2020 | marca=toyota | submarca=yaris | cvesegm=compacto | descveh=toyota yaris sol l 4 cilindros | tipveh=auto"
 }
 ```
 
