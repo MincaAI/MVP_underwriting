@@ -1,11 +1,11 @@
 import asyncio
 import time
+import uuid
 from typing import Dict, List, Any, Optional
 import structlog
-from celery import current_task
 from datetime import datetime
 
-from .celery_app import celery_app
+from app.mq.queue_factory import QueueFactory, QueueNames
 from ..auth.graph_client import GraphAPIClient
 from ..processors.email_processor import EmailProcessor
 from ..processors.attachment_handler import AttachmentHandler
@@ -16,47 +16,45 @@ from ..config.settings import get_settings
 logger = structlog.get_logger()
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
-def process_email_task(self, 
-                      message_id: str, 
-                      change_type: str = "created",
-                      subscription_id: Optional[str] = None) -> Dict[str, Any]:
+async def process_email_task(message_id: str,
+                            change_type: str = "created",
+                            subscription_id: Optional[str] = None) -> Dict[str, Any]:
     """
-    Main email processing task.
-    
+    Main email processing function (replaces Celery task).
+
     Args:
         message_id: Microsoft Graph message ID
         change_type: Type of change (created, updated)
         subscription_id: Graph subscription ID
-        
+
     Returns:
         Processing result summary
     """
     start_time = time.time()
-    task_id = self.request.id
-    
+    task_id = str(uuid.uuid4())
+
     try:
-        logger.info("Starting email processing task", 
+        logger.info("Starting email processing task",
                    task_id=task_id,
                    message_id=message_id,
                    change_type=change_type)
-        
-        # Run async processing in sync context
-        result = asyncio.run(_process_email_async(
+
+        # Run async processing
+        result = await _process_email_async(
             message_id=message_id,
             change_type=change_type,
             subscription_id=subscription_id,
             task_id=task_id
-        ))
-        
+        )
+
         processing_time = time.time() - start_time
-        
-        logger.info("Email processing task completed", 
+
+        logger.info("Email processing task completed",
                    task_id=task_id,
                    message_id=message_id,
                    processing_time=processing_time,
                    result=result)
-        
+
         return {
             "success": True,
             "task_id": task_id,
@@ -64,34 +62,16 @@ def process_email_task(self,
             "processing_time": processing_time,
             "result": result
         }
-        
+
     except Exception as exc:
         processing_time = time.time() - start_time
-        
-        logger.error("Email processing task failed", 
+
+        logger.error("Email processing task failed",
                     task_id=task_id,
                     message_id=message_id,
                     processing_time=processing_time,
-                    error=str(exc),
-                    attempt=self.request.retries + 1)
-        
-        # Retry with exponential backoff
-        if self.request.retries < self.max_retries:
-            retry_delay = 60 * (2 ** self.request.retries)  # Exponential backoff
-            logger.info("Retrying email processing task", 
-                       task_id=task_id,
-                       message_id=message_id,
-                       retry_delay=retry_delay,
-                       attempt=self.request.retries + 1)
-            
-            raise self.retry(exc=exc, countdown=retry_delay)
-        
-        # Max retries exceeded
-        logger.error("Email processing task failed permanently", 
-                    task_id=task_id,
-                    message_id=message_id,
-                    max_retries_exceeded=True)
-        
+                    error=str(exc))
+
         return {
             "success": False,
             "task_id": task_id,
@@ -100,6 +80,46 @@ def process_email_task(self,
             "error": str(exc),
             "max_retries_exceeded": True
         }
+
+
+async def queue_email_processing(message_id: str,
+                                change_type: str = "created",
+                                subscription_id: Optional[str] = None) -> str:
+    """
+    Queue email processing task using MQ.
+
+    Args:
+        message_id: Microsoft Graph message ID
+        change_type: Type of change (created, updated)
+        subscription_id: Graph subscription ID
+
+    Returns:
+        Task ID for tracking
+    """
+    task_id = str(uuid.uuid4())
+
+    # Create message payload
+    message_payload = {
+        "task_id": task_id,
+        "message_id": message_id,
+        "change_type": change_type,
+        "subscription_id": subscription_id,
+        "task_type": "email_processing"
+    }
+
+    # Get MQ publisher and send message
+    publisher = QueueFactory.get_publisher()
+    await publisher.send_message(
+        QueueNames.PRE_ANALYSIS,
+        message_payload
+    )
+
+    logger.info("Email processing queued",
+               task_id=task_id,
+               message_id=message_id,
+               queue=QueueNames.PRE_ANALYSIS)
+
+    return task_id
 
 
 async def _process_email_async(message_id: str, 
@@ -352,51 +372,46 @@ def _identify_missing_fields(case_data: Dict[str, Any],
     return missing
 
 
-@celery_app.task(bind=True, max_retries=2)
-def reprocess_email_task(self, message_id: str, reason: str = "manual_retry") -> Dict[str, Any]:
+async def reprocess_email_task(message_id: str, reason: str = "manual_retry") -> Dict[str, Any]:
     """
     Reprocess an email (for manual retry or corrections).
-    
+
     Args:
         message_id: Microsoft Graph message ID
         reason: Reason for reprocessing
-        
+
     Returns:
         Reprocessing result
     """
-    task_id = self.request.id
-    
+    task_id = str(uuid.uuid4())
+
     try:
-        logger.info("Starting email reprocessing", 
+        logger.info("Starting email reprocessing",
                    task_id=task_id,
                    message_id=message_id,
                    reason=reason)
-        
+
         # Run the same processing logic
-        result = asyncio.run(_process_email_async(
+        result = await _process_email_async(
             message_id=message_id,
             change_type="reprocess",
             subscription_id=None,
             task_id=task_id
-        ))
-        
-        logger.info("Email reprocessing completed", 
+        )
+
+        logger.info("Email reprocessing completed",
                    task_id=task_id,
                    message_id=message_id,
                    result=result)
-        
+
         return result
-        
+
     except Exception as exc:
-        logger.error("Email reprocessing failed", 
+        logger.error("Email reprocessing failed",
                     task_id=task_id,
                     message_id=message_id,
                     error=str(exc))
-        
-        if self.request.retries < self.max_retries:
-            retry_delay = 120 * (2 ** self.request.retries)  # Longer delay for reprocessing
-            raise self.retry(exc=exc, countdown=retry_delay)
-        
+
         return {
             "success": False,
             "task_id": task_id,
@@ -406,106 +421,98 @@ def reprocess_email_task(self, message_id: str, reason: str = "manual_retry") ->
         }
 
 
-@celery_app.task(bind=True)
-def batch_process_folder_task(self, folder_id: str, limit: int = 50) -> Dict[str, Any]:
+async def queue_batch_processing(folder_id: str, limit: int = 50) -> str:
     """
-    Process multiple emails from a folder (for initial setup or catch-up).
-    
+    Queue batch processing of emails from a folder.
+
     Args:
         folder_id: Outlook folder ID
         limit: Maximum number of emails to process
-        
+
     Returns:
-        Batch processing result
+        Batch processing task ID
     """
-    task_id = self.request.id
-    start_time = time.time()
-    
-    try:
-        logger.info("Starting batch folder processing", 
-                   task_id=task_id,
-                   folder_id=folder_id,
-                   limit=limit)
-        
-        result = asyncio.run(_batch_process_folder_async(
-            folder_id=folder_id,
-            limit=limit,
-            task_id=task_id
-        ))
-        
-        processing_time = time.time() - start_time
-        
-        logger.info("Batch folder processing completed", 
-                   task_id=task_id,
-                   folder_id=folder_id,
-                   processing_time=processing_time,
-                   result=result)
-        
-        return result
-        
-    except Exception as exc:
-        logger.error("Batch folder processing failed", 
-                    task_id=task_id,
-                    folder_id=folder_id,
-                    error=str(exc))
-        raise
+    task_id = str(uuid.uuid4())
+
+    # Create message payload
+    message_payload = {
+        "task_id": task_id,
+        "folder_id": folder_id,
+        "limit": limit,
+        "task_type": "batch_processing"
+    }
+
+    # Get MQ publisher and send message
+    publisher = QueueFactory.get_publisher()
+    await publisher.send_message(
+        QueueNames.PRE_ANALYSIS,
+        message_payload
+    )
+
+    logger.info("Batch processing queued",
+               task_id=task_id,
+               folder_id=folder_id,
+               limit=limit,
+               queue=QueueNames.PRE_ANALYSIS)
+
+    return task_id
 
 
-async def _batch_process_folder_async(folder_id: str, 
+async def _batch_process_folder_async(folder_id: str,
                                      limit: int,
                                      task_id: str) -> Dict[str, Any]:
     """
     Async implementation of batch folder processing.
-    
+
     Args:
         folder_id: Folder ID to process
         limit: Maximum messages to process
-        task_id: Celery task ID
-        
+        task_id: Task ID
+
     Returns:
         Batch processing result
     """
     graph_client = GraphAPIClient()
     database_client = DatabaseClient()
-    
+
     try:
         # Get messages from folder
         messages = await graph_client.list_messages_in_folder(folder_id, limit)
-        
-        logger.info("Retrieved messages for batch processing", 
+
+        logger.info("Retrieved messages for batch processing",
                    folder_id=folder_id,
                    message_count=len(messages))
-        
+
         processed_count = 0
         skipped_count = 0
         error_count = 0
-        
+
         for message in messages:
             message_id = message.get("id")
             if not message_id:
                 continue
-            
+
             try:
                 # Check if already processed
                 existing = await database_client.get_message_by_provider_id(message_id)
                 if existing and existing.get("status") == "PROCESSED":
                     skipped_count += 1
                     continue
-                
+
                 # Queue individual processing task
-                process_email_task.delay(
+                await queue_email_processing(
                     message_id=message_id,
                     change_type="batch_process"
                 )
-                
+
                 processed_count += 1
-                
+
             except Exception as e:
-                logger.error("Failed to queue message for batch processing", 
+                logger.error("Failed to queue message for batch processing",
                            message_id=message_id,
                            error=str(e))
                 error_count += 1
-        
+
         return {
             "folder_id": folder_id,
             "total_messages": len(messages),
@@ -514,39 +521,38 @@ async def _batch_process_folder_async(folder_id: str,
             "errors": error_count,
             "queued_tasks": processed_count
         }
-        
+
     except Exception as e:
-        logger.error("Batch folder processing failed", 
+        logger.error("Batch folder processing failed",
                     folder_id=folder_id,
                     task_id=task_id,
                     error=str(e))
         raise
 
 
-@celery_app.task(bind=True)
-def cleanup_old_tasks_task(self, days_old: int = 7) -> Dict[str, Any]:
+async def cleanup_old_tasks_task(days_old: int = 7) -> Dict[str, Any]:
     """
     Cleanup old completed tasks and results.
-    
+
     Args:
         days_old: Remove tasks older than this many days
-        
+
     Returns:
         Cleanup result
     """
-    task_id = self.request.id
-    
+    task_id = str(uuid.uuid4())
+
     try:
-        logger.info("Starting task cleanup", 
+        logger.info("Starting task cleanup",
                    task_id=task_id,
                    days_old=days_old)
-        
+
         # In production, this would clean up:
-        # - Completed Celery task results
+        # - Completed task results
         # - Temporary files
         # - Cache entries
         # - Log files
-        
+
         # For now, return placeholder result
         return {
             "success": True,
@@ -556,42 +562,40 @@ def cleanup_old_tasks_task(self, days_old: int = 7) -> Dict[str, Any]:
             "cleaned_files": 0,  # Would be actual count
             "freed_space_mb": 0  # Would be actual space freed
         }
-        
+
     except Exception as exc:
-        logger.error("Task cleanup failed", 
+        logger.error("Task cleanup failed",
                     task_id=task_id,
                     error=str(exc))
         raise
 
 
-@celery_app.task(bind=True)
-def health_check_task(self) -> Dict[str, Any]:
+async def health_check_task() -> Dict[str, Any]:
     """
-    Health check task to verify Celery worker functionality.
-    
+    Health check function to verify system functionality.
+
     Returns:
         Health check result
     """
-    task_id = self.request.id
-    
+    task_id = str(uuid.uuid4())
+
     try:
         # Test basic functionality
         test_data = {
             "task_id": task_id,
             "timestamp": datetime.utcnow().isoformat(),
-            "worker_name": self.request.hostname,
-            "queue": self.request.delivery_info.get("routing_key") if self.request.delivery_info else "unknown"
+            "service": "smart-intake-service"
         }
-        
-        logger.info("Health check task executed", **test_data)
-        
+
+        logger.info("Health check executed", **test_data)
+
         return {
             "healthy": True,
             "test_data": test_data
         }
-        
+
     except Exception as exc:
-        logger.error("Health check task failed", 
+        logger.error("Health check failed",
                     task_id=task_id,
                     error=str(exc))
         return {
@@ -605,24 +609,24 @@ def health_check_task(self) -> Dict[str, Any]:
 def get_task_status(task_id: str) -> Dict[str, Any]:
     """
     Get status of a specific task.
-    
+
     Args:
-        task_id: Celery task ID
-        
+        task_id: Task ID
+
     Returns:
         Task status information
     """
     try:
-        result = celery_app.AsyncResult(task_id)
-        
+        # In MQ implementation, we don't have direct task status tracking
+        # This would need to be implemented with a task status tracking system
         return {
             "task_id": task_id,
-            "status": result.status,
-            "result": result.result if result.ready() else None,
-            "traceback": result.traceback if result.failed() else None,
-            "timestamp": datetime.utcnow().isoformat()
+            "status": "UNKNOWN",  # Would be implemented with task tracking
+            "result": None,
+            "timestamp": datetime.utcnow().isoformat(),
+            "note": "Task status tracking not implemented in MQ version"
         }
-        
+
     except Exception as e:
         logger.error("Failed to get task status", task_id=task_id, error=str(e))
         return {
@@ -635,37 +639,89 @@ def get_task_status(task_id: str) -> Dict[str, Any]:
 
 def get_queue_statistics() -> Dict[str, Any]:
     """
-    Get statistics about task queues.
-    
+    Get statistics about message queues.
+
     Returns:
         Queue statistics
     """
     try:
-        inspect = celery_app.control.inspect()
-        
-        # Get active tasks
-        active_tasks = inspect.active()
-        active_count = sum(len(tasks) for tasks in active_tasks.values()) if active_tasks else 0
-        
-        # Get scheduled tasks
-        scheduled_tasks = inspect.scheduled()
-        scheduled_count = sum(len(tasks) for tasks in scheduled_tasks.values()) if scheduled_tasks else 0
-        
-        # Get reserved tasks
-        reserved_tasks = inspect.reserved()
-        reserved_count = sum(len(tasks) for tasks in reserved_tasks.values()) if reserved_tasks else 0
-        
+        # Get MQ configuration
+        config = QueueFactory.get_config()
+
+        # In a full implementation, this would query actual queue statistics
+        # For now, return configuration-based information
         return {
-            "active_tasks": active_count,
-            "scheduled_tasks": scheduled_count,
-            "reserved_tasks": reserved_count,
-            "total_pending": active_count + scheduled_count + reserved_count,
-            "timestamp": datetime.utcnow().isoformat()
+            "queue_backend": config.get("backend"),
+            "environment": config.get("environment"),
+            "available_queues": list(config.get("queue_names", {}).keys()),
+            "queue_names": config.get("queue_names", {}),
+            "timestamp": datetime.utcnow().isoformat(),
+            "note": "Queue statistics would be implemented with actual queue monitoring"
         }
-        
+
     except Exception as e:
         logger.error("Failed to get queue statistics", error=str(e))
         return {
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }
+
+
+async def start_message_consumer(queue_name: str, handler: callable):
+    """
+    Start a message consumer for a specific queue.
+
+    Args:
+        queue_name: Name of the queue to consume from
+        handler: Function to handle messages
+    """
+    try:
+        consumer = QueueFactory.get_consumer(queue_name)
+        await consumer.consume(handler)
+    except Exception as e:
+        logger.error("Failed to start message consumer",
+                    queue_name=queue_name,
+                    error=str(e))
+        raise
+
+
+def create_message_handler():
+    """
+    Create a message handler for processing different types of messages.
+
+    Returns:
+        Message handler function
+    """
+    async def message_handler(message: Dict[str, Any]):
+        """Handle incoming messages from the queue."""
+        try:
+            message_type = message.get("task_type")
+
+            if message_type == "email_processing":
+                # Handle email processing messages
+                await process_email_task(
+                    message_id=message["message_id"],
+                    change_type=message.get("change_type", "created"),
+                    subscription_id=message.get("subscription_id")
+                )
+
+            elif message_type == "batch_processing":
+                # Handle batch processing messages
+                await _batch_process_folder_async(
+                    folder_id=message["folder_id"],
+                    limit=message.get("limit", 50),
+                    task_id=message["task_id"]
+                )
+
+            else:
+                logger.warning("Unknown message type received",
+                             message_type=message_type,
+                             message=message)
+
+        except Exception as e:
+            logger.error("Error handling message",
+                        message=message,
+                        error=str(e))
+            raise
+
+    return message_handler

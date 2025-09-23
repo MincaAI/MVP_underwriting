@@ -9,8 +9,8 @@ packages = [{ include = "app", from = "src" }]
 python = "^3.11"
 SQLAlchemy = "^2.0.30"
 psycopg = {extras=["binary"], version="^3.1.18"}
-alembic = "^1.13.1"
 pgvector = "^0.3.2"
+alembic = "^1.16.5"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.10.0"

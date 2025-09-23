@@ -14,7 +14,7 @@ interface SmartIntakeResult {
   contact: string
   date: string
   cotNumber: string
-  preAnalysis: 'Completo' | 'Incompleto'
+  preAnalysis: 'complete' | 'incomplete'
   status: 'pending' | 'processing' | 'completed' | 'error'
   company?: string
   details?: string
@@ -40,6 +40,7 @@ export default function Dashboard() {
     const loadEmailData = async () => {
       try {
         const response = await apiClient.listEmails(50, 0) as { emails: SmartIntakeResult[] }
+        console.log('======>', response)
         setSmartIntakeResults(response.emails || [])
       } catch (error) {
         console.error('Error loading emails from database:', error)
@@ -73,7 +74,7 @@ export default function Dashboard() {
         contact: emailData.from,
         date: new Date().toISOString().slice(0, 16).replace('T', ' '),
         cotNumber: `TK-${new Date().getFullYear()}-${String(smartIntakeResults.length + 1).padStart(3, '0')}`,
-        preAnalysis: 'Completo',
+        preAnalysis: 'complete',
         status: 'processing',
         company: emailData.from.split('@')[1]
       }
@@ -92,7 +93,7 @@ export default function Dashboard() {
         contact: emailData.from,
         date: new Date().toISOString().slice(0, 16).replace('T', ' '),
         cotNumber: `TK-${new Date().getFullYear()}-${String(smartIntakeResults.length + 1).padStart(3, '0')}`,
-        preAnalysis: 'Completo',
+        preAnalysis: 'complete',
         status: 'pending',
         company: emailData.from.split('@')[1]
       }

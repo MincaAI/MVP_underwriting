@@ -37,11 +37,6 @@ class SmartIntakeSettings(BaseSettings):
     # Database Configuration
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/insurance_db"
     
-    # Redis Configuration (for Celery)
-    redis_url: str = "redis://localhost:6379"
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/0"
-    
     # OpenAI Configuration (for document intelligence)
     openai_api_key: str
     openai_model: str = "gpt-4o-mini"
@@ -98,56 +93,13 @@ class SmartIntakeSettings(BaseSettings):
         case_sensitive = False
 
 
-class CelerySettings(BaseSettings):
-    """Celery-specific configuration."""
-    
-    # Broker settings
-    broker_url: str = "redis://localhost:6379/0"
-    result_backend: str = "redis://localhost:6379/0"
-    
-    # Task settings
-    task_serializer: str = "json"
-    result_serializer: str = "json"
-    accept_content: List[str] = ["json"]
-    timezone: str = "UTC"
-    enable_utc: bool = True
-    
-    # Worker settings
-    worker_prefetch_multiplier: int = 1
-    task_acks_late: bool = True
-    worker_max_tasks_per_child: int = 1000
-    
-    # Task routing
-    task_routes: dict = {
-        "app.tasks.email_tasks.*": {"queue": "email_processing"},
-        "app.tasks.document_tasks.*": {"queue": "document_processing"},
-    }
-    
-    # Task time limits
-    task_soft_time_limit: int = 300  # 5 minutes
-    task_time_limit: int = 600  # 10 minutes
-    
-    # Retry settings
-    task_default_retry_delay: int = 60
-    task_max_retries: int = 3
-    
-    class Config:
-        env_prefix = "CELERY_"
-
-
 # Global settings instances
 settings = SmartIntakeSettings()
-celery_settings = CelerySettings()
 
 
 def get_settings() -> SmartIntakeSettings:
     """Get smart intake settings."""
     return settings
-
-
-def get_celery_settings() -> CelerySettings:
-    """Get Celery settings."""
-    return celery_settings
 
 
 def get_graph_authority_url() -> str:

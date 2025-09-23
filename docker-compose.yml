@@ -113,6 +113,27 @@ services:
     volumes:
       - ./ui/src:/app/src  # hot reload for development
 
+  smart-intake:
+    build:
+      context: .
+      dockerfile: services/smart-intake-service/Dockerfile
+    container_name: minca_smart_intake
+    env_file:
+      - configs/env/service-specific/.env.smart-intake
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://minca:minca@db:5432/minca}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio12345}
+      S3_BUCKET_RAW: ${S3_BUCKET_RAW:-raw}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-exports}
+      # Add Azure Graph credentials in env file:
+      # AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+    ports: ["8003:8003"]
+    depends_on: [db, minio, mc]
+    volumes:
+      - ./services/smart-intake-service/app:/app/services/smart-intake-service/app  # hot reload
+
 volumes:
   db_data:
   minio_data:
