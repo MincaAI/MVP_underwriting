@@ -2,8 +2,8 @@
 
 from typing import List, Tuple, Optional
 
-from .models import Candidate, ExtractedFields, ReviewCandidate
-from .config import Settings
+from ..models import Candidate, ExtractedFields, ReviewCandidate
+from ..config import Settings
 
 
 class DecisionEngine:
@@ -38,14 +38,14 @@ class DecisionEngine:
         if not vehicle_type:
             return self.settings.thresholds_by_type["default"]
 
-        vehicle_type_clean = vehicle_type.upper().strip()
+        vehicle_type_clean = vehicle_type.lower().strip()
 
         # Map vehicle types to threshold categories
-        if vehicle_type_clean in ["AUTO", "SEDAN", "HATCHBACK", "COUPE"]:
+        if vehicle_type_clean in ["auto", "sedan", "hatchback", "coupe"]:
             return self.settings.thresholds_by_type["auto"]
-        elif vehicle_type_clean in ["CAMIONETA", "PICKUP", "TRUCK", "TRACTO", "TRACTO CAMION"]:
+        elif vehicle_type_clean in ["camioneta", "pickup", "truck", "tracto", "tracto camion"]:
             return self.settings.thresholds_by_type["camioneta"]
-        elif vehicle_type_clean in ["MOTOCICLETA", "MOTORCYCLE", "MOTO", "SCOOTER"]:
+        elif vehicle_type_clean in ["motocicleta", "motorcycle", "moto", "scooter"]:
             return self.settings.thresholds_by_type["motocicleta"]
         else:
             return self.settings.thresholds_by_type["default"]

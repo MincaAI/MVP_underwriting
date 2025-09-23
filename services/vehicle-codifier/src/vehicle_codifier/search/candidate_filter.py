@@ -4,8 +4,8 @@ from typing import List, Tuple, Dict, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .models import Candidate, ExtractedFieldsWithConfidence
-from .config import Settings
+from ..models import Candidate, ExtractedFieldsWithConfidence
+from ..config import Settings
 
 
 class CandidateFilter:
@@ -174,9 +174,6 @@ class CandidateFilter:
                 result = session.execute(text(sql), sql_params)
 
                 for row in result:
-                    # Create label for candidate
-                    label = f"{row.modelo} {row.marca} {row.submarca or ''} {row.cvesegm or ''} {row.tipveh or ''}".strip()
-
                     # Calculate confidence score based on number of high-confidence filters matched
                     num_filters_applied = len(applied_filters)
                     if num_filters_applied >= 3:
@@ -194,7 +191,7 @@ class CandidateFilter:
                         submarca=row.submarca,
                         modelo=row.modelo,
                         descveh=row.descveh,
-                        label=label,
+                        label=None,  # Labels no longer used
                         similarity_score=0.0,  # Not applicable for direct filtering
                         fuzzy_score=0.0,      # Not applicable for direct filtering
                         final_score=confidence_score,

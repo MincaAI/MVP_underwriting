@@ -12,8 +12,8 @@ from .config import get_settings
 from .models import (
     VehicleInput, FlexibleMatchRequest, FlexibleMatchResponse, HealthResponse
 )
-from .service import VehicleCodeifier
-from .preprocessor import VehiclePreprocessor
+from .core import VehicleCodeifier
+from .pipeline import VehiclePreprocessor
 
 # Add packages to path for database access (optional - commented out for simplified service)
 # sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent.parent.parent / "packages" / "db" / "src"))

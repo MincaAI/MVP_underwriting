@@ -4,7 +4,7 @@ import json
 from typing import List, Optional
 import openai
 
-from .models import Candidate, ExtractedFields
+from ..models import Candidate, ExtractedFields
 
 
 class LLMValidator:
@@ -57,10 +57,29 @@ class LLMValidator:
 
             result_text = response.choices[0].message.content.strip()
 
-            # Parse JSON response
+            # Parse JSON response with improved error handling
             try:
-                result_data = json.loads(result_text)
+                # Try to extract JSON from response (in case there's extra text)
+                json_start = result_text.find('{')
+                json_end = result_text.rfind('}') + 1
+
+                if json_start >= 0 and json_end > json_start:
+                    json_text = result_text[json_start:json_end]
+                else:
+                    json_text = result_text
+
+                result_data = json.loads(json_text)
+
+                # Validate JSON structure
+                if not isinstance(result_data, dict) or "validations" not in result_data:
+                    raise ValueError("Invalid JSON structure: missing 'validations' key")
+
                 validations = result_data.get("validations", [])
+
+                if not isinstance(validations, list):
+                    raise ValueError("Invalid JSON structure: 'validations' must be a list")
+
+                print(f"✅ LLM returned valid JSON with {len(validations)} validations")
 
                 # Apply LLM confidence scores
                 validated_candidates = []
@@ -130,9 +149,34 @@ class LLMValidator:
                     print(f"⚠️ LLM validation removed all candidates")
                 return validated_candidates
 
-            except json.JSONDecodeError:
-                print("⚠️ LLM returned invalid JSON, using original candidates")
-                return candidates
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"⚠️ LLM JSON parsing failed: {e}")
+                print(f"🔍 LLM response preview: {result_text[:200]}...")
+
+                # Try to provide fallback validation with default confidence
+                print("🔄 Applying fallback validation with moderate confidence scores")
+                validated_candidates = []
+                for i, candidate in enumerate(candidates):
+                    # Assign moderate confidence for fallback
+                    fallback_confidence = 0.7 if candidate.final_score >= 0.8 else 0.5
+                    blended_score = (0.7 * candidate.final_score) + (0.3 * fallback_confidence)
+
+                    validated_candidate = Candidate(
+                        cvegs=candidate.cvegs,
+                        marca=candidate.marca,
+                        submarca=candidate.submarca,
+                        modelo=candidate.modelo,
+                        descveh=candidate.descveh,
+                        label=candidate.label,
+                        similarity_score=candidate.similarity_score,
+                        fuzzy_score=candidate.fuzzy_score,
+                        final_score=blended_score,
+                        cvesegm=candidate.cvesegm,
+                        tipveh=candidate.tipveh
+                    )
+                    validated_candidates.append(validated_candidate)
+
+                return validated_candidates
 
         except Exception as e:
             print(f"⚠️ LLM validation failed: {e}")
@@ -147,7 +191,7 @@ class LLMValidator:
         if has_high_confidence_candidates:
             high_confidence_note = "Note: These candidates were pre-filtered with high confidence (>=0.9), so be more lenient in scoring."
 
-        prompt = f"""Analyze this vehicle description and rate how well each candidate matches.
+        prompt = f"""You are a vehicle matching expert. Analyze this vehicle description and rate how well each candidate matches.
 
 Vehicle to match:
 - Year: {year}
@@ -159,7 +203,7 @@ Vehicle to match:
 Candidates:
 {json.dumps(candidate_info, indent=2)}
 
-For each candidate, provide a confidence score (0.0-1.0) based on:
+Rate each candidate on a scale of 0.0 to 1.0 based on:
 1. Brand match accuracy
 2. Model/submodel compatibility
 3. Year appropriateness
@@ -168,12 +212,15 @@ For each candidate, provide a confidence score (0.0-1.0) based on:
 
 {high_confidence_note}
 
-Return JSON format:
+IMPORTANT: You must respond with ONLY valid JSON in this exact format:
+
 {{
   "validations": [
     {{"index": 0, "confidence": 0.85, "reasoning": "Strong brand and model match"}},
     {{"index": 1, "confidence": 0.65, "reasoning": "Brand matches but submodel differs"}}
   ]
-}}"""
+}}
+
+Do not include any text before or after the JSON. The response must be parseable JSON only."""
 
         return prompt

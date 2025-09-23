@@ -52,12 +52,21 @@ class Candidate(BaseModel):
     submarca: str
     modelo: int
     descveh: str
-    label: str
+    label: Optional[str] = None
     similarity_score: float
     fuzzy_score: float
     final_score: float
+    llm_score: float = 0.0  # LLM confidence score (added for post-reranking mixing)
     cvesegm: Optional[str] = None
     tipveh: Optional[str] = None
+    embedding: Optional[List[float]] = None  # Used internally, excluded from output
+
+    def dict(self, *args, **kwargs):
+        # Exclude embedding from output unless explicitly included
+        exclude = kwargs.pop("exclude", set())
+        exclude = set(exclude)
+        exclude.add("embedding")
+        return super().dict(*args, exclude=exclude, **kwargs)
 
 
 class ReviewCandidate(BaseModel):
@@ -91,10 +100,36 @@ class MatchResult(BaseModel):
     # Debug information (optional)
     debug_info: Optional[Dict[str, Any]] = None
 
+    def dict(self, *args, **kwargs):
+        # Ensure all candidates are serialized with embedding excluded
+        d = super().dict(*args, **kwargs)
+        if "candidates" in d and isinstance(d["candidates"], list):
+            d["candidates"] = [c.dict() if isinstance(c, Candidate) else c for c in d["candidates"]]
+        if "top_candidates_for_review" in d and isinstance(d["top_candidates_for_review"], list):
+            d["top_candidates_for_review"] = [
+                c.dict() if isinstance(c, ReviewCandidate) else c for c in d["top_candidates_for_review"]
+            ]
+        return d
+
 
 class FlexibleMatchRequest(RootModel[Dict[str, Dict[str, Any]]]):
     """Flexible matching request with numbered JSON object."""
     root: Dict[str, Dict[str, Any]]  # {"0": {...}, "1": {...}}
+
+
+class PostProcessorInput(BaseModel):
+    """Input for candidate post-processor (Steps 5-6: fallback + reranking)."""
+    candidates: List[Candidate] = []
+    description: str
+    extracted_fields: ExtractedFields
+    year: int
+    debug_info: Optional[Dict[str, Any]] = None
+
+
+class PostProcessorResult(BaseModel):
+    """Result from candidate post-processor."""
+    candidates: List[Candidate] = []
+    debug_info: Dict[str, Any] = Field(default_factory=dict)
 
 
 class FlexibleMatchResponse(BaseModel):

@@ -9,8 +9,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 from rapidfuzz import fuzz
 
-from .config import get_settings
-from .models import Candidate
+from ..config import get_settings
+from ..models import Candidate
 
 
 class VehicleCatalogCache:
@@ -63,6 +63,18 @@ class VehicleCatalogCache:
 
                     for row in rows:
                         # Always add catalog record regardless of embedding
+                        # Only process embedding if it exists
+                        embedding = None
+                        if row.embedding is not None:
+                            try:
+                                embedding_str = row.embedding.strip('[]')
+                                embedding = [float(x.strip()) for x in embedding_str.split(',')]
+                                embeddings_list.append(embedding)
+                            except (ValueError, AttributeError) as e:
+                                embeddings_list.append(None)
+                        else:
+                            embeddings_list.append(None)
+
                         catalog_record = {
                             'cvegs': row.cvegs,
                             'marca': row.marca,
@@ -78,24 +90,10 @@ class VehicleCatalogCache:
                             'idperdiod': row.idperdiod,
                             'sumabas': row.sumabas,
                             'tipveh': row.tipveh,
-                            'label': row.label
+                            'label': row.label or "",
+                            'embedding': embedding
                         }
                         self._catalog_data.append(catalog_record)
-
-                        # Only process embedding if it exists
-                        if row.embedding is not None:
-                            try:
-                                # Convert string representation back to list
-                                embedding_str = row.embedding.strip('[]')
-                                embedding = [float(x.strip()) for x in embedding_str.split(',')]
-                                embeddings_list.append(embedding)
-                            except (ValueError, AttributeError) as e:
-                                print(f"⚠️ Skipping embedding for row {row.cvegs}: {e}")
-                                # Add placeholder for missing embedding to maintain index alignment
-                                embeddings_list.append(None)
-                        else:
-                            # Add placeholder for missing embedding to maintain index alignment
-                            embeddings_list.append(None)
 
                     # Process embeddings - filter out None values for numpy array
                     valid_embeddings = [emb for emb in embeddings_list if emb is not None]
@@ -209,7 +207,8 @@ class VehicleCatalogCache:
                             label=catalog_record['label'],
                             similarity_score=similarity_score,
                             fuzzy_score=0.0,  # Will be calculated later
-                            final_score=0.0   # Will be calculated later
+                            final_score=0.0,  # Will be calculated later
+                            embedding=catalog_record['embedding']
                         ))
 
                     total_candidates_before_brand += 1
@@ -217,12 +216,13 @@ class VehicleCatalogCache:
                     # Apply brand filter if provided and enabled
                     brand_filter_start_time = time.time() if total_candidates_before_brand == 1 else None
                     if (brand_filter and self.settings.enable_brand_filtering and
-                        catalog_record['marca'].upper() != brand_filter.upper()):
+                        catalog_record['marca'].lower() != brand_filter.lower()):
                         candidates_filtered_by_brand += 1
                         continue
 
                     # Calculate fuzzy score for hybrid ranking
-                    fuzzy_score = self._calculate_fuzzy_score(query_label, catalog_record['label'])
+                    catalog_label = catalog_record['label'] or ""
+                    fuzzy_score = self._calculate_fuzzy_score(query_label, catalog_label)
 
                     # Hybrid final score (70% embedding + 30% fuzzy)
                     final_score = (
@@ -239,7 +239,8 @@ class VehicleCatalogCache:
                         label=catalog_record['label'],
                         similarity_score=similarity_score,
                         fuzzy_score=fuzzy_score,
-                        final_score=final_score
+                        final_score=final_score,
+                        embedding=catalog_record['embedding']
                     )
                     candidates.append(candidate)
 
@@ -303,7 +304,7 @@ class VehicleCatalogCache:
 
     def _calculate_fuzzy_score(self, query_label: str, catalog_label: str) -> float:
         """Calculate fuzzy string similarity score."""
-        return fuzz.ratio(query_label.upper(), catalog_label.upper()) / 100.0
+        return fuzz.ratio(query_label.lower(), catalog_label.lower()) / 100.0
 
     def is_cache_available(self) -> bool:
         """Check if cache is loaded and available."""

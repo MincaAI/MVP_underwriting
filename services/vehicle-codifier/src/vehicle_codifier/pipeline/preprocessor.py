@@ -7,14 +7,14 @@ from typing import Optional, Dict, Tuple, Any, Union
 from openai import OpenAI
 from unidecode import unidecode
 
-from .config import get_settings
+from ..config import get_settings
 
 
 def norm(text: str) -> str:
     """Normalize text for consistent processing."""
     if not text:
         return ""
-    return unidecode(str(text).strip().upper())
+    return unidecode(str(text).strip().lower())
 
 
 class VehiclePreprocessor:
@@ -173,7 +173,7 @@ class VehiclePreprocessor:
             return 0.0
 
         score = 0.0
-        text_upper = text.upper()
+        text_lower = text.lower()
 
         # Length bonus
         if len(text) > 10:
@@ -183,15 +183,15 @@ class VehiclePreprocessor:
 
         # Vehicle-related keywords
         vehicle_keywords = [
-            'TOYOTA', 'HONDA', 'NISSAN', 'FORD', 'CHEVROLET', 'VOLKSWAGEN', 'BMW', 'MERCEDES',
-            'AUDI', 'HYUNDAI', 'KIA', 'MAZDA', 'SUBARU', 'RENAULT', 'PEUGEOT', 'CITROEN',
-            'INTERNATIONAL', 'VOLVO', 'SCANIA', 'MAN', 'FREIGHTLINER', 'PETERBILT',
-            'SEDAN', 'SUV', 'HATCHBACK', 'PICKUP', 'COUPE', 'CONVERTIBLE', 'TRACTO', 'TRUCK',
-            'AUTO', 'CAR', 'VEHICLE', 'CARRO', 'AUTOMOVIL', 'VEHICULO',
-            'MOTOR', 'ENGINE', 'CILINDROS', 'TURBO', 'HYBRID', 'ELECTRIC'
+            'toyota', 'honda', 'nissan', 'ford', 'chevrolet', 'volkswagen', 'bmw', 'mercedes',
+            'audi', 'hyundai', 'kia', 'mazda', 'subaru', 'renault', 'peugeot', 'citroen',
+            'international', 'volvo', 'scania', 'man', 'freightliner', 'peterbilt',
+            'sedan', 'suv', 'hatchback', 'pickup', 'coupe', 'convertible', 'tracto', 'truck',
+            'auto', 'car', 'vehicle', 'carro', 'automovil', 'vehiculo',
+            'motor', 'engine', 'cilindros', 'turbo', 'hybrid', 'electric'
         ]
 
-        keyword_matches = sum(1 for keyword in vehicle_keywords if keyword in text_upper)
+        keyword_matches = sum(1 for keyword in vehicle_keywords if keyword in text_lower)
         score += keyword_matches * 0.2
 
         # Penalize if it looks like an ID or code
@@ -280,7 +280,7 @@ class VehiclePreprocessor:
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
 
         # Apply full normalization like original norm() function
-        return unidecode(cleaned.upper())
+        return unidecode(cleaned.lower())
 
     def _llm_identify_fields(self, batch_data: Dict[str, Dict[str, Any]], field_analysis: Dict) -> Optional[Dict[str, str]]:
         """Use LLM to identify fields when pattern analysis is uncertain."""

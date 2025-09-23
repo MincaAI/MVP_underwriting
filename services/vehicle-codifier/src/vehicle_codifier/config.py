@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     max_candidates: int = 25
     max_results: int = 5
 
+    # Embedding-first approach settings
+    embedding_only_candidates: int = 20  # Get top 20 by embedding similarity only
+    semantic_search_threshold: int = 20  # Skip embedding search if pre-filtered candidates <= this number
+    reranker_threshold: int = 20  # Use LLM reranker if candidates >= this number
+
     # Enhanced response options
     return_candidates_on_no_match: bool = True
     min_candidates_for_review: int = 3
@@ -112,6 +117,7 @@ class Settings(BaseSettings):
         # Find project root and construct path to env file
         project_root = Path(__file__).parent.parent.parent.parent.parent
         env_file = project_root / "configs" / "env" / ".env.development"
+        extra = "ignore"  # Allow extra environment variables to be ignored
 
 
 def get_settings() -> Settings:

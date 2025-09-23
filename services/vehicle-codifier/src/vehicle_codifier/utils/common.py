@@ -6,10 +6,10 @@ from unidecode import unidecode
 
 
 def norm(text: str) -> str:
-    """Normalize text for consistent processing (legacy uppercase version)."""
+    """Normalize text for consistent processing (updated to lowercase)."""
     if not text:
         return ""
-    return unidecode(str(text).strip().upper())
+    return unidecode(str(text).strip().lower())
 
 
 def normalize_text(text: Any) -> str:

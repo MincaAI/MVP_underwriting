@@ -40,7 +40,7 @@ class BrandLookup:
                         vehicle_types = brand.get("vehicle_types", [])
                         if any(vtype in ["CAMION", "TRACTO CAMION", "SEMIREMOLQUE"]
                                for vtype in vehicle_types):
-                            self.commercial_brands.add(brand_name.upper())
+                            self.commercial_brands.add(brand_name.lower())
 
             print(f"📋 Loaded {len(self.brand_aliases)} brand aliases")
             print(f"🚛 Identified {len(self.commercial_brands)} commercial brands")
@@ -105,7 +105,7 @@ class BrandLookup:
     def _clean_description(self, description: str) -> str:
         """Clean and normalize description for brand extraction."""
         # Remove extra whitespace and special characters
-        desc = re.sub(r'\s+', ' ', description.strip().upper())
+        desc = re.sub(r'\s+', ' ', description.strip().lower())
         desc = re.sub(r'[^\w\s]', ' ', desc)
         return desc
 
@@ -160,7 +160,7 @@ class BrandLookup:
         for pattern in commercial_patterns:
             match = re.search(pattern, description, re.IGNORECASE)
             if match:
-                brand_text = match.group(1).upper()
+                brand_text = match.group(1).lower()
                 if brand_text in self.brand_aliases:
                     return self.brand_aliases[brand_text]
 
@@ -183,15 +183,15 @@ class BrandLookup:
 
     def suggest_tipveh(self, brand: str, description: str) -> str:
         """Suggest vehicle type based on brand and description."""
-        desc_upper = description.upper()
+        desc_lower = description.lower()
 
         # Commercial vehicle indicators
         if (self.is_commercial_brand(brand) or
-            any(word in desc_upper for word in ['TRACTO', 'CAMION', 'TRUCK', 'SEMI'])):
+            any(word in desc_lower for word in ['TRACTO', 'CAMION', 'TRUCK', 'SEMI'])):
             return 'camioneta'
 
         # Motorcycle indicators
-        if any(word in desc_upper for word in ['MOTOCICLETA', 'MOTO', 'MOTORCYCLE']):
+        if any(word in desc_lower for word in ['MOTOCICLETA', 'MOTO', 'MOTORCYCLE']):
             return 'motocicleta'
 
         # Default to auto
