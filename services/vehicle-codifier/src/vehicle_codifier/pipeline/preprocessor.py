@@ -279,8 +279,27 @@ class VehiclePreprocessor:
         # Remove extra whitespace and strip leading/trailing spaces
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
 
+        # Remove consecutive duplicate words (e.g., "tanque tanque" → "tanque")
+        cleaned = self._remove_duplicate_words(cleaned)
+
         # Apply full normalization like original norm() function
         return unidecode(cleaned.lower())
+
+    def _remove_duplicate_words(self, text: str) -> str:
+        """Remove consecutive duplicate words like 'tanque tanque' → 'tanque'."""
+        if not text:
+            return ""
+        
+        words = text.lower().split()
+        result = []
+        prev_word = None
+        
+        for word in words:
+            if word != prev_word:
+                result.append(word)
+            prev_word = word
+        
+        return ' '.join(result)
 
     def _llm_identify_fields(self, batch_data: Dict[str, Dict[str, Any]], field_analysis: Dict) -> Optional[Dict[str, str]]:
         """Use LLM to identify fields when pattern analysis is uncertain."""

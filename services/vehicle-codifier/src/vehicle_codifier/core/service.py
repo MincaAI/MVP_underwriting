@@ -7,8 +7,8 @@ import openai
 
 from ..config import get_settings
 from ..models import VehicleInput, MatchResult, ExtractedFields, PostProcessorInput
-from .processor import VehicleProcessor
-from ..pipeline import VehiclePreprocessor, DecisionEngine, LLMReranker, filter_candidates_with_high_confidence
+from ..pipeline import VehiclePreprocessor, DecisionEngine, LLMReranker, filter_candidates_with_high_confidence, FieldExtractor
+from ..pipeline.filtering import apply_progressive_fallback
 from ..pipeline.fuzzy_matching import apply_fuzzy_matching
 from ..search import VehicleCatalogCache, CandidateFilter, CandidateMatcher
 from ..pipeline.embedding_scoring import build_query_label
@@ -22,7 +22,7 @@ class VehicleCodeifier:
         self.engine = create_engine(self.settings.database_url)
 
         # Core components with separation of concerns
-        self.processor = VehicleProcessor()  # Focused on field extraction only
+        self.field_extractor = FieldExtractor()  # Focused on field extraction only
         # Pipeline components
         self.preprocessor = VehiclePreprocessor()
         self.cache = VehicleCatalogCache()
@@ -30,12 +30,14 @@ class VehicleCodeifier:
         self.candidate_matcher = CandidateMatcher(self.engine, self.cache, self.settings)
         self.decision_engine = DecisionEngine(self.settings)
 
-        # Initialize OpenAI client for LLM reranking
+        # Initialize OpenAI client for LLM finalizer
         self.openai_client = None
         if self.settings.openai_api_key:
             self.openai_client = openai.OpenAI(api_key=self.settings.openai_api_key)
 
-        self.llm_reranker = LLMReranker(self.openai_client, self.settings.openai_model)
+        # Import LLM finalizer
+        from ..pipeline.llm_finalizer import finalize_candidates_with_llm
+        self.llm_finalizer = finalize_candidates_with_llm
 
         # (CandidatePostProcessor removed)
 
@@ -56,7 +58,7 @@ class VehicleCodeifier:
             # Step 2: Extract CATVER fields from normalized description using unified processor
             print("[DEBUG] Step 2: Extracting fields with confidence")
             year = processed["model_year"]
-            extracted_fields_with_confidence = self.processor.extract_fields_with_confidence(processed["description"], year)
+            extracted_fields_with_confidence = self.field_extractor.extract_fields_with_confidence(processed["description"], year)
             print(f"[DEBUG] Step 2: Extracted fields: {extracted_fields_with_confidence}")
             if hasattr(extracted_fields_with_confidence, "marca"):
                 print(f"[DEBUG] Step 2: Marca={extracted_fields_with_confidence.marca.value}, Confidence={extracted_fields_with_confidence.marca.confidence}")
@@ -69,8 +71,14 @@ class VehicleCodeifier:
                 extracted_fields_with_confidence, year, self.engine, self.settings
             )
             print(f"[DEBUG] Step 3: Candidates after filtering: {len(candidates)}")
-            if candidates:
-                print(f"[DEBUG] Step 3: First candidate: {candidates[0]}")
+            
+            # Step 3b: Progressive fallback if no candidates found
+            if len(candidates) == 0:
+                print("[DEBUG] Step 3b: No candidates found, applying progressive fallback...")
+                candidates, applied_filters = apply_progressive_fallback(
+                    extracted_fields_with_confidence, year, self.engine, self.settings
+                )
+                print(f"[DEBUG] Step 3b: Candidates after fallback: {len(candidates)}")
 
             debug_info = None
             description = processed["description"]
@@ -92,38 +100,47 @@ class VehicleCodeifier:
                 print(f"[DEBUG] Step 4: Top candidate similarity_score: {candidates[0].similarity_score}")
             debug_info = {"embedding_scoring_applied": True}
 
-            # Step 4b: LLM reranker on top 20 embedded candidates
-            print("[DEBUG] Step 4b: LLM reranking top 20 embedded candidates")
-            from ..pipeline.llm_reranker import LLMReranker
-            extracted_fields = extracted_fields_with_confidence.to_extracted_fields()
-            reranked_candidates = LLMReranker.rerank_top_candidates(
-                candidates, description, extracted_fields, year, self.llm_reranker
-            )
-            if reranked_candidates:
-                candidates = reranked_candidates
-                print(f"[DEBUG] Step 4b: Candidates after LLM reranking: {len(candidates)}")
-                print(f"[DEBUG] Step 4b: Top candidate after reranking: {candidates[0]}")
-            else:
-                print("[DEBUG] Step 4b: No candidates after LLM reranking (empty input or reranker returned empty)")
-
-            # Step 5: Mix all scores into final_score
-            print("[DEBUG] Step 5: Mixing all scores into final_score")
+            # Step 5: Mix all scores into final_score (no LLM weight, BEFORE LLM finalizer)
+            print("[DEBUG] Step 5: Mixing all scores into final_score (no LLM weight, before LLM finalizer)")
             def mix_candidate_scores(candidate):
-                # Example weights: adjust as needed for your use case
-                w_filter = 0.25
-                w_fuzzy = 0.2
-                w_embed = 0.25
-                w_llm = 0.3
+                # Adjusted weights: filter, fuzzy, embedding (sum to 1.0)
+                w_filter = 0.4
+                w_fuzzy = 0.3
+                w_embed = 0.3
                 return (
                     w_filter * candidate.final_score +
                     w_fuzzy * candidate.fuzzy_score +
-                    w_embed * candidate.similarity_score +
-                    w_llm * candidate.llm_score
+                    w_embed * candidate.similarity_score
                 )
             for candidate in candidates:
                 candidate.final_score = mix_candidate_scores(candidate)
             if candidates:
                 print(f"[DEBUG] Step 5: Top candidate final_score: {candidates[0].final_score}")
+
+            # Step 6: LLM finalizer on top 10 candidates by mixed score
+            print("[DEBUG] Step 6: LLM finalizer on top 10 candidates by mixed score")
+            from ..pipeline.llm_finalizer import finalize_candidates_with_llm
+            extracted_fields = extracted_fields_with_confidence.to_extracted_fields()
+            llm_results, llm_notice = finalize_candidates_with_llm(
+                candidates, description, extracted_fields, year, self.openai_client, self.settings.openai_model
+            )
+            if llm_results:
+                print(f"[DEBUG] Step 6: LLM finalizer returned {len(llm_results)} candidates")
+                candidates = []
+                for idx, res in enumerate(llm_results):
+                    c = res["candidate"]
+                    conf = res["llm_confidence"]
+                    c.llm_score = conf if conf is not None else 0.0
+                    print(f"[DEBUG]   Candidate {idx+1}: {c.marca} {c.submarca} {c.modelo} (llm_score: {c.llm_score})")
+                    candidates.append(c)
+            else:
+                print("[DEBUG] Step 6: No candidates after LLM finalizer (empty input or LLM returned empty)")
+                # Fallback: use top 3 by final_score, llm_score=0.0
+                candidates = sorted(candidates, key=lambda c: c.final_score, reverse=True)[:3]
+                for c in candidates:
+                    c.llm_score = 0.0
+            if llm_notice:
+                print(f"[DEBUG] LLM finalizer notice: {llm_notice}")
 
             # Step 6: Apply decision engine
             print("[DEBUG] Step 6: Applying decision engine")
@@ -176,7 +193,6 @@ class VehicleCodeifier:
         return ExtractedFields(
             marca=fields_with_confidence.marca.value if fields_with_confidence.marca.value else None,
             submarca=fields_with_confidence.submarca.value if fields_with_confidence.submarca.value else None,
-            cvesegm=fields_with_confidence.cvesegm.value if fields_with_confidence.cvesegm.value else None,
             descveh=fields_with_confidence.descveh,
             tipveh=fields_with_confidence.tipveh.value if fields_with_confidence.tipveh.value else None
         )

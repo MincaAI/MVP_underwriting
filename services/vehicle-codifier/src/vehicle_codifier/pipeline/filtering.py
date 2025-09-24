@@ -43,7 +43,6 @@ def filter_candidates_with_high_confidence(
         filter_map = {
             "marca": _apply_marca_filter,
             "tipveh": _apply_tipveh_filter,
-            "cvesegm": _apply_cvesegm_filter,
             "submarca": _apply_submarca_filter,
         }
         for name in apply_filter:
@@ -54,17 +53,13 @@ def filter_candidates_with_high_confidence(
                     where_conditions, sql_params, applied_filters
                 )
     else:
+        # Default filters: marca, tipveh, submarca (removed cvesegm)
         _apply_marca_filter(
             extracted_fields_with_confidence, confidence_threshold,
             where_conditions, sql_params, applied_filters
         )
 
         _apply_tipveh_filter(
-            extracted_fields_with_confidence, confidence_threshold,
-            where_conditions, sql_params, applied_filters
-        )
-
-        _apply_cvesegm_filter(
             extracted_fields_with_confidence, confidence_threshold,
             where_conditions, sql_params, applied_filters
         )
@@ -80,6 +75,49 @@ def filter_candidates_with_high_confidence(
     print(f"🎯 High-confidence filtering: {len(candidates)} candidates after filtering")
 
     return candidates, applied_filters
+
+
+def apply_progressive_fallback(
+    extracted_fields_with_confidence: ExtractedFieldsWithConfidence,
+    year: int,
+    engine,
+    settings
+) -> Tuple[List[Candidate], List[Dict]]:
+    """Apply progressive fallback when initial filtering returns 0 candidates.
+    
+    Fallback sequence:
+    1. All 3 filters (marca, tipveh, submarca) → if 0 candidates
+    2. Remove submarca (marca + tipveh) → if still 0 candidates  
+    3. Remove tipveh (marca only) → if still 0 candidates
+    4. Remove marca, try tipveh only → if still 0 candidates
+    5. No field filters (year + catalog only)
+    """
+    
+    fallback_sequences = [
+        (["marca", "tipveh"], "Removing submarca (least priority)"),
+        (["marca"], "Removing tipveh (keeping highest priority marca)"), 
+        (["tipveh"], "Trying tipveh only (removing marca)"),
+        ([], "No field filters (year + catalog only)")
+    ]
+    
+    for retry_filters, reason in fallback_sequences:
+        print(f"[DEBUG] Fallback attempt: {reason}")
+        print(f"[DEBUG] Retry filters: {retry_filters}")
+        
+        candidates, applied_filters = filter_candidates_with_high_confidence(
+            extracted_fields_with_confidence, year, engine, settings, 
+            apply_filter=retry_filters if retry_filters else None
+        )
+        
+        if len(candidates) > 0:
+            print(f"[DEBUG] ✅ Fallback successful: {len(candidates)} candidates found with filters {retry_filters}")
+            return candidates, applied_filters
+        else:
+            print(f"[DEBUG] ❌ Fallback failed: 0 candidates with filters {retry_filters}")
+    
+    # If we get here, even the most basic filtering failed
+    print("[DEBUG] 🚨 All fallback attempts failed - returning empty results")
+    return [], []
 
 
 def _apply_marca_filter(
@@ -120,23 +158,6 @@ def _apply_tipveh_filter(
         print(f"✅ Applying tipveh filter: '{extracted_fields_with_confidence.tipveh.value}' (confidence: {extracted_fields_with_confidence.tipveh.confidence:.2f})")
 
 
-def _apply_cvesegm_filter(
-    extracted_fields_with_confidence: ExtractedFieldsWithConfidence,
-    confidence_threshold: float, where_conditions: List[str],
-    sql_params: Dict[str, Any], applied_filters: List[Dict]
-) -> None:
-    """Apply cvesegm filter if confidence is high enough."""
-    if extracted_fields_with_confidence.cvesegm.confidence >= confidence_threshold:
-        where_conditions.append("cvesegm = :cvesegm")
-        sql_params["cvesegm"] = extracted_fields_with_confidence.cvesegm.value
-        applied_filters.append({
-            "filter_name": "cvesegm",
-            "applied": True,
-            "extracted_value": extracted_fields_with_confidence.cvesegm.value,
-            "confidence": extracted_fields_with_confidence.cvesegm.confidence,
-            "method": extracted_fields_with_confidence.cvesegm.method
-        })
-        print(f"✅ Applying cvesegm filter: '{extracted_fields_with_confidence.cvesegm.value}' (confidence: {extracted_fields_with_confidence.cvesegm.confidence:.2f})")
 
 
 def _apply_submarca_filter(
@@ -167,10 +188,9 @@ def _execute_filtered_query(
     try:
         with Session(engine) as session:
             sql = f"""
-                SELECT cvegs, marca, submarca, modelo, descveh, cvesegm, tipveh, embedding
+                SELECT cvegs, marca, submarca, modelo, descveh, tipveh, embedding
                 FROM amis_catalog
                 WHERE {' AND '.join(where_conditions)}
-                LIMIT 1000
             """
 
             result = session.execute(text(sql), sql_params)
@@ -204,7 +224,6 @@ def _execute_filtered_query(
                     similarity_score=0.0,  # Not applicable for direct filtering
                     fuzzy_score=0.0,      # Not applicable for direct filtering
                     final_score=confidence_score,
-                    cvesegm=row.cvesegm,
                     tipveh=row.tipveh,
                     embedding=embedding
                 )

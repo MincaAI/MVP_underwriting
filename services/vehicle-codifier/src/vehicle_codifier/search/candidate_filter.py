@@ -168,7 +168,6 @@ class CandidateFilter:
                     SELECT cvegs, marca, submarca, modelo, descveh, cvesegm, tipveh
                     FROM amis_catalog
                     WHERE {' AND '.join(where_conditions)}
-                    LIMIT 1000
                 """
 
                 result = session.execute(text(sql), sql_params)

@@ -19,7 +19,7 @@ class DecisionEngine:
             return "no_match", 0.0, None
 
         best_candidate = candidates[0]
-        confidence = best_candidate.final_score
+        confidence = best_candidate.llm_score
 
         # Get dynamic thresholds based on vehicle type
         thresholds = self._get_dynamic_thresholds(fields.tipveh)
@@ -75,7 +75,7 @@ class DecisionEngine:
                 submarca=candidate.submarca,
                 modelo=candidate.modelo,
                 descveh=candidate.descveh,
-                confidence=candidate.final_score,
+                confidence=candidate.llm_score,
                 match_quality=match_quality,
                 similarity_score=candidate.similarity_score,
                 fuzzy_score=candidate.fuzzy_score

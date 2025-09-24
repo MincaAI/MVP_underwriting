@@ -90,7 +90,7 @@ class CandidateMatcher:
         # Brand filtering removed - now handled in dynamic filtering pipeline
 
         sql = f"""
-        SELECT cvegs, marca, submarca, modelo, descveh, label, cvesegm, tipveh,
+        SELECT cvegs, marca, submarca, modelo, descveh, label, tipveh,
                1 - (embedding <=> CAST(:qvec AS vector)) AS similarity_score
         FROM amis_catalog
         WHERE {' AND '.join(where_conditions)}
@@ -132,7 +132,6 @@ class CandidateMatcher:
                 similarity_score=row.similarity_score,
                 fuzzy_score=fuzzy_score,
                 final_score=final_score,
-                cvesegm=row.cvesegm,
                 tipveh=row.tipveh
             ))
 
@@ -181,7 +180,7 @@ class CandidateMatcher:
         # If we have extracted brand info, prioritize that brand
         if fields.marca:
             sql = f"""
-            SELECT cvegs, marca, submarca, modelo, descveh, label, cvesegm, tipveh
+            SELECT cvegs, marca, submarca, modelo, descveh, label, tipveh
             FROM amis_catalog
             WHERE {' AND '.join(where_conditions)}
             ORDER BY
@@ -223,7 +222,6 @@ class CandidateMatcher:
                 similarity_score=0.0,  # No embedding similarity available
                 fuzzy_score=fuzzy_score,
                 final_score=fuzzy_score,
-                cvesegm=row.cvesegm,
                 tipveh=row.tipveh
             ))
 

@@ -19,6 +19,7 @@ def normalize_text(text: Any) -> str:
     This is the new standardized normalization function that:
     - Uses lowercase for consistency across the project
     - Removes VIN patterns automatically
+    - Removes consecutive duplicate words
     - Handles unidecode transformation
     - Normalizes whitespace
 
@@ -26,7 +27,7 @@ def normalize_text(text: Any) -> str:
         text: Input text to normalize (any type, will be converted to string)
 
     Returns:
-        Normalized lowercase text with VINs removed
+        Normalized lowercase text with VINs and duplicate words removed
     """
     if not text:
         return ""
@@ -42,9 +43,29 @@ def normalize_text(text: Any) -> str:
     # Remove extra whitespace and normalize spaces
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
 
+    # Remove consecutive duplicate words (e.g., "tanque tanque" → "tanque")
+    cleaned = _remove_duplicate_words(cleaned)
+
     # Apply unidecode transformation and convert to lowercase
     # unidecode removes accents and converts unicode to ASCII
     return unidecode(cleaned).lower()
+
+
+def _remove_duplicate_words(text: str) -> str:
+    """Remove consecutive duplicate words like 'tanque tanque' → 'tanque'."""
+    if not text:
+        return ""
+    
+    words = text.lower().split()
+    result = []
+    prev_word = None
+    
+    for word in words:
+        if word != prev_word:
+            result.append(word)
+        prev_word = word
+    
+    return ' '.join(result)
 
 
 def normalize_catalog_field(field_value: Any) -> str:

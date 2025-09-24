@@ -14,7 +14,6 @@ class ExtractedFields(BaseModel):
     """Fields extracted from vehicle description."""
     marca: Optional[str] = None
     submarca: Optional[str] = None
-    cvesegm: Optional[str] = None  # segment
     descveh: Optional[str] = None  # cleaned description
     tipveh: Optional[str] = None   # vehicle type
 
@@ -30,7 +29,6 @@ class ExtractedFieldsWithConfidence(BaseModel):
     """Fields extracted from vehicle description with confidence scores."""
     marca: FieldConfidence = Field(default_factory=FieldConfidence)
     submarca: FieldConfidence = Field(default_factory=FieldConfidence)
-    cvesegm: FieldConfidence = Field(default_factory=FieldConfidence)
     descveh: Optional[str] = None  # cleaned description (always available)
     tipveh: FieldConfidence = Field(default_factory=FieldConfidence)
 
@@ -39,7 +37,6 @@ class ExtractedFieldsWithConfidence(BaseModel):
         return ExtractedFields(
             marca=self.marca.value,
             submarca=self.submarca.value,
-            cvesegm=self.cvesegm.value,
             descveh=self.descveh,
             tipveh=self.tipveh.value
         )
@@ -56,10 +53,9 @@ class Candidate(BaseModel):
     similarity_score: float
     fuzzy_score: float
     final_score: float
-    llm_score: float = 0.0  # LLM confidence score (added for post-reranking mixing)
-    cvesegm: Optional[str] = None
+    llm_score: float = 0.0  # LLM confidence score from finalizer
     tipveh: Optional[str] = None
-    embedding: Optional[List[float]] = None  # Used internally, excluded from output
+    embedding: Optional[List[float]] = Field(default=None, exclude=True)  # Used internally, always excluded from output
 
     def dict(self, *args, **kwargs):
         # Exclude embedding from output unless explicitly included
@@ -91,11 +87,11 @@ class MatchResult(BaseModel):
     candidates: List[Candidate] = []
     extracted_fields: Optional[ExtractedFields] = None
     processing_time_ms: float
-    query_label: Optional[str] = None
+    query_label: Optional[str] = Field(default=None, exclude=True)
 
     # Enhanced fields for better user experience
-    top_candidates_for_review: List[ReviewCandidate] = []
-    recommendation: Optional[str] = None  # "auto_accept", "manual_review_suggested", etc.
+    top_candidates_for_review: List[ReviewCandidate] = Field(default=[], exclude=True)
+    recommendation: Optional[str] = Field(default=None, exclude=True)  # "auto_accept", "manual_review_suggested", etc.
 
     # Debug information (optional)
     debug_info: Optional[Dict[str, Any]] = None

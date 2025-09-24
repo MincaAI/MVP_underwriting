@@ -33,8 +33,6 @@ def build_query_label(modelo: int, fields: ExtractedFields) -> str:
         parts.append(f"marca={norm(fields.marca)}")
     if fields.submarca:
         parts.append(f"submarca={norm(fields.submarca)}")
-    if fields.cvesegm:
-        parts.append(f"cvesegm={norm(fields.cvesegm)}")
     if fields.descveh:
         parts.append(f"descveh={norm(fields.descveh)}")
     if fields.tipveh:
