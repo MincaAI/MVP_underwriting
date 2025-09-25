@@ -28,9 +28,12 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+psycopg://minca:minca@localhost:5432/minca"
 
-    # OpenAI for field extraction - will fallback to common config
+    # OpenAI for field extraction and final selection
     openai_api_key: str
     openai_model: str = "gpt-4o-mini"
+    gpt5_model: str = "gpt-5-2025-08-07"
+    enable_gpt5_final_selection: bool = True
+    gpt5_selection_temperature: float = 0.0  # For consistency in final selection
 
     # Embedding model (must match catalog embedding model)
     embedding_model: str = "intfloat/multilingual-e5-large"

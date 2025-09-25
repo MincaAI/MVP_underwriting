@@ -1,45 +1,4 @@
 services:
-  db:
-    image: pgvector/pgvector:pg16
-    container_name: minca_db
-    env_file:
-      - configs/env/.env.development
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-minca}
-      POSTGRES_USER: ${POSTGRES_USER:-minca}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-minca}
-    ports: ["5432:5432"]
-    volumes:
-      - db_data:/var/lib/postgresql/data
-
-  minio:
-    image: minio/minio:latest
-    container_name: minca_minio
-    command: server --console-address ":9001" /data
-    env_file:
-      - configs/env/.env.development
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio12345}
-    ports: ["9000:9000", "9001:9001"]
-    volumes:
-      - minio_data:/data
-
-  mc:
-    image: minio/mc:latest
-    container_name: minca_minio_mc
-    depends_on: [minio]
-    env_file:
-      - configs/env/.env.development
-    entrypoint: >
-      /bin/sh -c "
-      sleep 3;
-      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
-      mc mb -p local/${S3_BUCKET_RAW} || true;
-      mc mb -p local/${S3_BUCKET_EXPORTS} || true;
-      exit 0;
-      "
-
   api:
     build:
       context: .
@@ -49,15 +8,15 @@ services:
       - configs/env/.env.development
       - configs/env/service-specific/.env.api
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://minca:minca@db:5432/minca}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio12345}
-      S3_BUCKET_RAW: ${S3_BUCKET_RAW:-raw}
-      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-exports}
+      DATABASE_URL: ${DATABASE_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      S3_BUCKET_RAW: ${S3_BUCKET_RAW}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
       QUEUE_BACKEND: ${QUEUE_BACKEND:-local}
     ports: ["8000:8000"]
-    depends_on: [db, minio, mc]
     volumes:
       - ./services/api/src:/app/services/api/src  # hot reload-friendly
 
@@ -70,15 +29,15 @@ services:
       - configs/env/.env.development
       - configs/env/service-specific/.env.document-processor
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://minca:minca@db:5432/minca}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio12345}
-      S3_BUCKET_RAW: ${S3_BUCKET_RAW:-raw}
-      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-exports}
+      DATABASE_URL: ${DATABASE_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      S3_BUCKET_RAW: ${S3_BUCKET_RAW}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
       QUEUE_BACKEND: ${QUEUE_BACKEND:-local}
     ports: ["8001:8001"]
-    depends_on: [db, minio, mc]
     volumes:
       - ./services/document-processor/src:/app/services/document-processor/src  # hot reload
 
@@ -91,10 +50,9 @@ services:
       - configs/env/.env.development
       - configs/env/service-specific/.env.vehicle-codifier
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://minca:minca@db:5432/minca}
+      DATABASE_URL: ${DATABASE_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports: ["8002:8002"]
-    depends_on: [db]
     volumes:
       - ./services/vehicle-codifier/src:/app/src  # hot reload
 
@@ -121,19 +79,15 @@ services:
     env_file:
       - configs/env/service-specific/.env.smart-intake
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://minca:minca@db:5432/minca}
-      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio12345}
-      S3_BUCKET_RAW: ${S3_BUCKET_RAW:-raw}
-      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-exports}
+      DATABASE_URL: ${DATABASE_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+      S3_BUCKET_RAW: ${S3_BUCKET_RAW}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
       # Add Azure Graph credentials in env file:
       # AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
     ports: ["8003:8003"]
-    depends_on: [db, minio, mc]
     volumes:
       - ./services/smart-intake-service/app:/app/services/smart-intake-service/app  # hot reload
-
-volumes:
-  db_data:
-  minio_data:

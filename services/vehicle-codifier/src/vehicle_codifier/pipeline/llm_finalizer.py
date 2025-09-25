@@ -1,6 +1,6 @@
 """LLM-based candidate finalizer for vehicle codifier pipeline."""
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from ..models import Candidate, ExtractedFields
 
 def finalize_candidates_with_llm(
@@ -103,3 +103,89 @@ Respond ONLY with valid JSON in this format:
             }
             for c in top_candidates[:3]
         ], f"LLM error: {e}, using total score"
+
+
+def select_final_candidate(
+    candidates: List[Candidate],
+    description: str,
+    year: int,
+    openai_client=None,
+    gpt5_model: str = "gpt-5-2025-08-07"
+) -> Tuple[Optional[Candidate], Optional[str]]:
+    """
+    Take top 3 candidates and use GPT-5 to select the single best match.
+    Returns (best_candidate, notice_message) or (None, error_message).
+    """
+    if not candidates:
+        return None, "No candidates available for final selection"
+    
+    # Ensure we have at most 3 candidates
+    top_3_candidates = candidates[:3]
+    
+    if openai_client is None:
+        # Fallback: return the first candidate with notice
+        return top_3_candidates[0], "GPT-5 unavailable, using top candidate from previous step"
+    
+    # Build candidate details for prompt
+    candidate_details = []
+    for i, candidate in enumerate(top_3_candidates, 1):
+        details = f"{i}. Brand: {candidate.marca}"
+        if candidate.submarca:
+            details += f", Submodel: {candidate.submarca}"
+        details += f", Year: {candidate.modelo}"
+        if candidate.tipveh:
+            details += f", Type: {candidate.tipveh}"
+        details += f", Description: {candidate.descveh}"
+        candidate_details.append(details)
+    
+    candidate_list = "\n".join(candidate_details)
+    
+    prompt = f"""You are an expert vehicle codification specialist with deep knowledge of vehicle specifications and manufacturer details.
+
+Task: Select the SINGLE most accurate match for this vehicle description.
+
+Original Description: "{description}"
+Year: {year}
+
+Candidates:
+{candidate_list}
+
+Instructions:
+- Analyze each candidate's compatibility with the original description
+- Consider brand, model, year, and technical specifications
+- Return ONLY the number (1, 2, or 3) of the best match
+- If no candidate is suitable, return "NONE"
+
+Response:"""
+
+    try:
+        response = openai_client.chat.completions.create(
+            model=gpt5_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=20,
+            temperature=0.0
+        )
+        
+        result_text = response.choices[0].message.content.strip()
+        
+        # Parse the response
+        if result_text == "NONE":
+            return None, "GPT-5 determined no suitable match among candidates"
+        
+        try:
+            selected_index = int(result_text) - 1  # Convert to 0-based index
+            if 0 <= selected_index < len(top_3_candidates):
+                selected_candidate = top_3_candidates[selected_index]
+                # Mark this candidate as GPT-5 selected
+                selected_candidate.gpt5_selected = True
+                return selected_candidate, None
+            else:
+                # Invalid index, fallback to first candidate
+                return top_3_candidates[0], f"GPT-5 returned invalid index ({result_text}), using top candidate"
+        except ValueError:
+            # Non-numeric response, fallback to first candidate
+            return top_3_candidates[0], f"GPT-5 returned non-numeric response ({result_text}), using top candidate"
+            
+    except Exception as e:
+        # Error calling GPT-5, fallback to first candidate
+        return top_3_candidates[0], f"GPT-5 error: {str(e)}, using top candidate from previous step"

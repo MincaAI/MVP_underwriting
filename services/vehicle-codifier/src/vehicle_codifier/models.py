@@ -54,6 +54,7 @@ class Candidate(BaseModel):
     fuzzy_score: float
     final_score: float
     llm_score: float = 0.0  # LLM confidence score from finalizer
+    gpt5_selected: bool = False  # True if this candidate was selected by GPT-5 final selector
     tipveh: Optional[str] = None
     embedding: Optional[List[float]] = Field(default=None, exclude=True)  # Used internally, always excluded from output
 

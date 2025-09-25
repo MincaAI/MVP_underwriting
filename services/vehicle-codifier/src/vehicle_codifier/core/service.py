@@ -35,9 +35,10 @@ class VehicleCodeifier:
         if self.settings.openai_api_key:
             self.openai_client = openai.OpenAI(api_key=self.settings.openai_api_key)
 
-        # Import LLM finalizer
-        from ..pipeline.llm_finalizer import finalize_candidates_with_llm
+        # Import LLM finalizer and final selector
+        from ..pipeline.llm_finalizer import finalize_candidates_with_llm, select_final_candidate
         self.llm_finalizer = finalize_candidates_with_llm
+        self.final_selector = select_final_candidate
 
         # (CandidatePostProcessor removed)
 
@@ -142,10 +143,33 @@ class VehicleCodeifier:
             if llm_notice:
                 print(f"[DEBUG] LLM finalizer notice: {llm_notice}")
 
-            # Step 6: Apply decision engine
-            print("[DEBUG] Step 6: Applying decision engine")
+            # Step 7: GPT-5 Final Selector (determines suggested CVEGS, keeps all candidates)
+            print("[DEBUG] Step 7: GPT-5 Final Selector")
+            gpt5_suggested_cvegs = None
+            if self.settings.enable_gpt5_final_selection and candidates:
+                selected_candidate, notice = self.final_selector(
+                    candidates, description, year, self.openai_client, self.settings.gpt5_model
+                )
+                if selected_candidate:
+                    # Mark the selected candidate but keep all candidates
+                    selected_candidate.gpt5_selected = True
+                    gpt5_suggested_cvegs = selected_candidate.cvegs
+                    print(f"[DEBUG] GPT-5 selected: {selected_candidate.marca} {selected_candidate.submarca} (CVEGS: {gpt5_suggested_cvegs})")
+                if notice:
+                    print(f"[DEBUG] {notice}")
+            else:
+                print("[DEBUG] GPT-5 selection skipped")
+
+            # Step 8: Apply decision engine (with GPT-5 suggestion)
+            print("[DEBUG] Step 8: Applying decision engine")
             decision, confidence, suggested_cvegs = self.decision_engine.make_decision(candidates, extracted_fields)
-            print(f"[DEBUG] Step 6: Decision={decision}, Confidence={confidence}, Suggested CVEGS={suggested_cvegs}")
+            
+            # Override suggested_cvegs with GPT-5 selection if available
+            if gpt5_suggested_cvegs is not None:
+                suggested_cvegs = gpt5_suggested_cvegs
+                print(f"[DEBUG] Using GPT-5 suggested CVEGS: {suggested_cvegs}")
+            
+            print(f"[DEBUG] Step 8: Decision={decision}, Confidence={confidence}, Suggested CVEGS={suggested_cvegs}")
 
             # Add processing time
             processing_time = (time.time() - start_time) * 1000

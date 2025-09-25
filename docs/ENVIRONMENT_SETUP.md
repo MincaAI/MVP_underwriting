@@ -4,27 +4,21 @@ This guide explains how to set up and manage environment variables for the Minca
 
 ## 📁 Environment File Structure
 
-The project uses an organized environment structure with separation between environments and services:
+The project uses a simple, clean environment structure:
 
 ```
 configs/env/
 ├── .env.development     # Local development (default)
-├── .env.staging         # Staging environment
+├── .env.staging         # Staging environment  
 ├── .env.production      # Production environment
-├── .env.example         # Template for all environments
-└── service-specific/
-    ├── .env.api
-    ├── .env.document-processor
-    ├── .env.vehicle-codifier
-    ├── .env.smart-intake
-    └── .env.ui
+└── .env.example         # Template for all environments
 ```
 
 ## 🚀 Quick Setup
 
 ### For Development (Default)
 
-1. **Copy the development environment file:**
+1. **Copy the example environment file:**
    ```bash
    cp configs/env/.env.example configs/env/.env.development
    ```
@@ -32,8 +26,11 @@ configs/env/
 2. **Edit the development file with your values:**
    ```bash
    # Edit configs/env/.env.development
-   # Most default values work for local development
-   # Only change OPENAI_API_KEY if you need vehicle codification
+   # Required changes:
+   # - DATABASE_URL: Your PostgreSQL connection string
+   # - AWS credentials: Your AWS S3 credentials
+   # - OPENAI_API_KEY: Your OpenAI API key (for vehicle codification)
+   # - S3_BUCKET_NAME: Your S3 bucket name
    ```
 
 3. **Start the services:**
@@ -66,62 +63,80 @@ configs/env/
 
 ## 📋 Environment Variables Reference
 
-### Core Infrastructure (`configs/env/.env.{environment}`)
-
-| Variable | Description | Development | Staging/Production |
-|----------|-------------|-------------|-------------------|
-| `NODE_ENV` | Node.js environment | `development` | `production` |
-| `ENVIRONMENT` | App environment | `development` | `staging`/`production` |
-| `LOG_LEVEL` | Logging level | `DEBUG` | `INFO`/`WARNING` |
-
 ### Database Configuration
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `POSTGRES_DB` | Database name | `minca` |
-| `POSTGRES_USER` | Database user | `minca` |
-| `POSTGRES_PASSWORD` | Database password | `your_password` |
-| `DATABASE_URL` | Full connection string | `postgresql+psycopg://user:pass@host:5432/db` |
+| `DATABASE_URL` | Full PostgreSQL connection string | `postgresql+psycopg://user:pass@host:5432/db?sslmode=require` |
 
-### Storage Configuration
+### AWS S3 Configuration
 
-| Variable | Description | Development | Production |
-|----------|-------------|-------------|------------|
-| `S3_ENDPOINT_URL` | Storage endpoint | `http://minio:9000` | `https://s3.amazonaws.com` |
-| `S3_BUCKET_RAW` | Raw files bucket | `raw` | `minca-prod-raw` |
-| `S3_BUCKET_EXPORTS` | Export files bucket | `exports` | `minca-prod-exports` |
-| `AWS_ACCESS_KEY_ID` | AWS access key | MinIO user | AWS key |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret key | MinIO password | AWS secret |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `AWS_ACCESS_KEY_ID` | AWS access key | `AKIAIOSFODNN7EXAMPLE` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key | `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` |
+| `AWS_DEFAULT_REGION` | AWS region | `us-east-1` |
+| `S3_BUCKET_RAW` | Raw files bucket | `raw` |
+| `S3_BUCKET_EXPORTS` | Export files bucket | `exports` |
+| `S3_BUCKET_NAME` | Main bucket name | `minca-underwriting` |
 
-### Service-Specific Variables
+### Queue Configuration
 
-#### API Service (`configs/env/service-specific/.env.api`)
-- `API_HOST`, `API_PORT`: Server configuration
-- `CORS_ORIGINS`: Allowed origins for CORS
-- `RATE_LIMIT_*`: Rate limiting settings
-- `ENABLE_*`: Feature flags
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `QUEUE_BACKEND` | Queue backend type | `local` |
 
-#### Document Processor (`configs/env/service-specific/.env.document-processor`)
-- `MAX_FILE_SIZE`: Maximum upload size
-- `ALLOWED_FILE_TYPES`: Supported file formats
-- `PROCESSING_TIMEOUT`: Processing time limit
-- `BATCH_SIZE`: Processing batch size
+### OpenAI Configuration
 
-#### Vehicle Codifier (`configs/env/service-specific/.env.vehicle-codifier`)
-- `OPENAI_API_KEY`: OpenAI API key for embeddings
-- Vehicle catalog data managed via S3 + Postgres (no local dataset paths)
-- `CONFIDENCE_THRESHOLD_*`: ML confidence thresholds
-- `EMBEDDING_MODEL`: ML model configuration
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | OpenAI API key (required) | `sk-proj-...` |
+| `OPENAI_MODEL` | Model to use | `gpt-4o-mini` |
+| `OPENAI_MAX_TOKENS` | Max tokens per request | `1000` |
+| `OPENAI_TEMPERATURE` | Model temperature | `0.1` |
 
-#### Smart Intake (`configs/env/service-specific/.env.smart-intake`)
-- `AZURE_*`: Azure/Outlook integration
-- `EMAIL_*`: Email processing settings
-- `WEBHOOK_*`: Webhook configuration
+### Embedding Configuration
 
-#### UI (`configs/env/service-specific/.env.ui`)
-- `NEXT_PUBLIC_*`: Public environment variables for Next.js
-- `NEXT_PUBLIC_API_URL`: API endpoint URLs
-- Feature flags and UI configuration
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `EMBEDDING_MODEL` | Embedding model name | `intfloat/multilingual-e5-large` |
+| `EMBEDDING_DIMENSION` | Vector dimensions | `1024` |
+| `SIMILARITY_THRESHOLD` | Similarity matching threshold | `0.70` |
+| `FUZZY_MATCH_THRESHOLD` | Fuzzy matching threshold | `0.80` |
+| `W_EMBED` | Embedding weight | `0.7` |
+| `W_FUZZY` | Fuzzy matching weight | `0.3` |
+
+### API Service Configuration
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `API_HOST` | API server host | `0.0.0.0` |
+| `API_PORT` | API server port | `8000` |
+| `CORS_ORIGINS` | Allowed CORS origins | `http://localhost:3000,http://localhost:8000` |
+
+### Service URLs Configuration
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `VEHICLE_CODIFIER_HOST` | Vehicle codifier host | `0.0.0.0` |
+| `VEHICLE_CODIFIER_PORT` | Vehicle codifier port | `8002` |
+| `SMART_INTAKE_HOST` | Smart intake host | `0.0.0.0` |
+| `SMART_INTAKE_PORT` | Smart intake port | `8003` |
+
+### Azure Configuration (Smart Intake Service)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `AZURE_TENANT_ID` | Azure tenant ID | `your-tenant-id` |
+| `AZURE_CLIENT_ID` | Azure client ID | `your-client-id` |
+| `AZURE_CLIENT_SECRET` | Azure client secret | `your-client-secret` |
+
+### AMIS Catalog Configuration
+
+The AMIS vehicle catalog is managed through database and S3 storage:
+- **Database**: Vehicle data stored in `amis_catalog` table with embeddings
+- **Tools**: Use `upload_amis_standalone.py` and `fix_embeddings_standalone.py` for catalog management
+- **Status**: Catalog versions tracked in `catalog_import` table with LOADED/EMBEDDED/ACTIVE status
 
 ## 🔧 Environment Management
 
@@ -151,20 +166,19 @@ env_file:
 Docker Compose loads environment variables in this order (highest to lowest priority):
 
 1. `environment:` section in docker-compose.yml
-2. Service-specific env files (`configs/env/service-specific/.env.{service}`)
-3. Main environment file (`configs/env/.env.{environment}`)
-4. Shell environment variables
+2. Environment file specified in docker-compose.yml (`configs/env/.env.{environment}`)
+3. Shell environment variables
 
 ### Local Overrides
 
-For local development overrides, you can still use a root `.env` file:
+For local development overrides, you can create a root `.env` file:
 
 ```bash
-# Create a local override file
+# Create a local override file (optional)
 echo "OPENAI_API_KEY=your_local_key" > .env
 ```
 
-This will override values from the organized environment files.
+However, it's recommended to directly edit `configs/env/.env.development` for consistency.
 
 ## 🔒 Security Best Practices
 
